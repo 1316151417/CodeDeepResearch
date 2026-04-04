@@ -1,4 +1,4 @@
-from .base import EventType, Event
+from .llm_base import EventType, Event
 
 
 class LLMAdaptor:
