@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from enum import Enum
-from deepseek_llm import call_stream
+from deepseek_openai_api import call_stream
 
 
 class EventType(Enum):

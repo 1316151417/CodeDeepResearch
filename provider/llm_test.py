@@ -1,21 +1,18 @@
-from llm_adaptor import LLMAdaptor, EventType
+from provider.anthropic_provider.anthropic_adaptor import LLMAdaptor, EventType
 
 tools = [
     {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get the current weather in a given location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "The city name",
-                    },
+        "name": "get_weather",
+        "description": "Get the current weather in a given location",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "The city name",
                 },
-                "required": ["city"],
             },
+            "required": ["city"],
         },
     }
 ]
@@ -24,7 +21,6 @@ adaptor = LLMAdaptor()
 
 for event in adaptor.stream(
     [
-        {"role": "system", "content": "You are a helpful assistant"},
         {"role": "user", "content": "What's the weather in Beijing and Tokyo?"},
     ],
     tools=tools,
