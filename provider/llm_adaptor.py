@@ -1,4 +1,4 @@
-from base.llm import EventType, Event, Tool, normalize_messages
+from base.types import EventType, Event, Tool, normalize_messages
 
 
 class LLMAdaptor:

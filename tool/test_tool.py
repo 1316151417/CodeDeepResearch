@@ -1,4 +1,4 @@
-from base.llm import tool
+from base.types import tool
 
 
 @tool
