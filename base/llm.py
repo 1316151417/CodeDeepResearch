@@ -1,0 +1,174 @@
+import inspect
+from typing import Callable, Optional, Dict, List, Union
+from dataclasses import dataclass, field
+from enum import Enum
+
+
+class EventType(Enum):
+    MESSAGE_START = "message_start"
+    CONTENT_DELTA = "content_delta"
+    TOOL_START = "tool_start"
+    TOOL_END = "tool_end"
+    MESSAGE_END = "message_end"
+
+
+@dataclass
+class Event:
+    type: EventType
+    content: Optional[str] = None
+    tool_index: Optional[int] = None
+    tool_name: Optional[str] = None
+    tool_arguments: Optional[str] = None
+    finish_reason: Optional[str] = None
+
+
+@dataclass
+class ToolProperty:
+    type: str
+    description: str
+    enum: Optional[List[str]] = None
+
+
+@dataclass
+class Tool:
+    name: str
+    description: str
+    parameters: Dict[str, ToolProperty]
+    required: List[str] = field(default_factory=list)
+    func: Optional[Callable] = None
+
+    def to_openai(self) -> dict:
+        properties = {}
+        for key, prop in self.parameters.items():
+            prop_dict = {
+                "type": prop.type,
+                "description": prop.description,
+            }
+            if prop.enum:
+                prop_dict["enum"] = prop.enum
+            properties[key] = prop_dict
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": self.required,
+                },
+            },
+        }
+
+    def to_anthropic(self) -> dict:
+        properties = {}
+        for key, prop in self.parameters.items():
+            prop_dict = {
+                "type": prop.type,
+                "description": prop.description,
+            }
+            if prop.enum:
+                prop_dict["enum"] = prop.enum
+            properties[key] = prop_dict
+
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": {
+                "type": "object",
+                "properties": properties,
+                "required": self.required,
+            },
+        }
+
+    def __call__(self, *args, **kwargs):
+        if self.func is None:
+            raise RuntimeError(f"Tool {self.name} has no associated function")
+        return self.func(*args, **kwargs)
+
+
+@dataclass
+class Message:
+    role: str
+    content: str
+
+    def to_dict(self) -> dict:
+        return {"role": self.role, "content": self.content}
+
+
+class SystemMessage(Message):
+    def __init__(self, content: str):
+        super().__init__("system", content)
+
+
+class UserMessage(Message):
+    def __init__(self, content: str):
+        super().__init__("user", content)
+
+
+class AssistantMessage(Message):
+    def __init__(self, content: str):
+        super().__init__("assistant", content)
+
+
+def tool(func=None, *, name=None, description=None):
+    def decorator(f):
+        tool_name = name or f.__name__
+        tool_description = description or f.__doc__ or ""
+
+        sig = inspect.signature(f)
+        parameters = {}
+        required = []
+
+        for param_name, param in sig.parameters.items():
+            if param_name == "self":
+                continue
+
+            param_type = param.annotation
+            if param_type == inspect.Parameter.empty:
+                param_type = "string"
+            else:
+                param_type = _get_type_string(param_type)
+
+            if param.default == inspect.Parameter.empty:
+                required.append(param_name)
+
+            parameters[param_name] = ToolProperty(
+                type=param_type,
+                description=f"{param_name}",
+            )
+
+        return Tool(
+            name=tool_name,
+            description=tool_description.strip(),
+            parameters=parameters,
+            required=required,
+            func=f,
+        )
+
+    if func is None:
+        return decorator
+    return decorator(func)
+
+
+def _get_type_string(type_hint) -> str:
+    type_map = {
+        str: "string",
+        int: "integer",
+        float: "number",
+        bool: "boolean",
+        list: "array",
+        dict: "object",
+    }
+    return type_map.get(type_hint, "string")
+
+
+def normalize_messages(messages: List[Union[Message, dict]]) -> List[dict]:
+    normalized = []
+    for msg in messages:
+        if isinstance(msg, Message):
+            normalized.append(msg.to_dict())
+        else:
+            normalized.append(msg)
+    return normalized

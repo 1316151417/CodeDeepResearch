@@ -1,4 +1,4 @@
-from .llm_base import EventType, Event, Tool
+from base.llm import EventType, Event, Tool, normalize_messages
 
 
 class LLMAdaptor:
@@ -15,6 +15,7 @@ class LLMAdaptor:
         self._provider = provider
 
     def stream(self, messages, tools=None, **kwargs):
+        messages = normalize_messages(messages)
         params = {}
 
         if self._provider == "anthropic":

@@ -1,16 +1,9 @@
-from provider.llm_base import EventType, Tool, ToolProperty
+from base.llm import EventType, SystemMessage, UserMessage
 from provider.llm_adaptor import LLMAdaptor
+from prompt.test_system_prompt import SYSTEM_PROMPT
+from tool.test_tool import get_weather, get_temperature
 
-tools = [
-    Tool(
-        name="get_weather",
-        description="获取一个城市的天气",
-        parameters={
-            "city": ToolProperty(type="string", description="城市名称"),
-        },
-        required=["city"],
-    )
-]
+tools = [get_weather, get_temperature]
 
 def print_event(event):
     if event.type == EventType.MESSAGE_START:
@@ -29,8 +22,8 @@ def anthropic_test():
 
     for event in adaptor.stream(
         messages=[
-            {"role": "system", "content": "你是一个天气预报助手。注意：你可以在一次响应中调用多次工具"},
-            {"role": "user", "content": "今天北京和上海的天气怎么样？"},
+            SystemMessage(SYSTEM_PROMPT),
+            UserMessage("今天北京和上海的天气怎么样？"),
         ],
         tools=tools,
     ):
@@ -41,8 +34,8 @@ def openai_test():
 
     for event in adaptor.stream(
         messages=[
-            {"role": "system", "content": "你是一个天气预报助手。注意：你可以在一次响应中调用多次工具"},
-            {"role": "user", "content": "今天北京和上海的天气怎么样？"},
+            SystemMessage(SYSTEM_PROMPT),
+            UserMessage("今天北京和上海的天气怎么样？"),
         ],
         tools=tools,
     ):
@@ -51,5 +44,5 @@ def openai_test():
 if __name__ == "__main__":
     print("=== OpenAI Test ===")
     openai_test()
-    print("\n\n=== Anthropic Test ===")
+    print("=== Anthropic Test ===")
     anthropic_test()
