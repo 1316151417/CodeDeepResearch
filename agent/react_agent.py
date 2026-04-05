@@ -1,12 +1,12 @@
 import json
 from provider.adaptor import LLMAdaptor
-from base.types import EventType
+from base.types import EventType, ToolMessage, AssistantMessage
 
 MAX_LLM_CALL_CNT = 30
 
 
-def react(messages, tools):
-    adaptor = LLMAdaptor()
+def react(messages, tools, provider="anthropic"):
+    adaptor = LLMAdaptor(provider=provider)
     react_finished = False
     llm_call_cnt = 0
 
@@ -34,18 +34,15 @@ def react(messages, tools):
                 tool_id = event.tool_id
                 tool_name = event.tool_name
                 tool_arguments = event.tool_arguments
-                tool_status = "running"
                 # 定义结构
                 tool_call = {
                     "tool_id": tool_id,
                     "tool_name": tool_name,
-                    "tool_arguments": tool_arguments,
-                    "tool_status": tool_status,
                     "tool_result": None,
                     "tool_error": None,
                 }
                 # 存入字典
-                tool_call_dict[event.tool_id] = tool_call
+                tool_call_dict[tool_id] = tool_call
                 # 开始执行
                 print(f"\n[Tool Call] {tool_name}({tool_arguments})")
                 try:
@@ -59,19 +56,26 @@ def react(messages, tools):
                     result = exec_tool(**exec_tool_arguments)
                     print(f"[Tool Result] {result}")
                     # 更新工具调用结果
-                    tool_call["tool_status"] = "success"
                     tool_call["tool_result"] = result
                 except Exception as e:
                     # 更新工具调用错误
-                    tool_call["tool_status"] = "failed"
                     tool_call["tool_error"] = str(e)
+
+        # 判断是否结束
         if not tool_call_dict:
-            # 没有工具调用，结束
             react_finished = True
+            break
+        
+        # 没有结束封装下一轮消息
+        # 封装LLM返回消息
+        if content:
+            messages.append(AssistantMessage(content))
+        # 封装工具调用结果消息
         for tool_call in tool_call_dict.values():
-            # TODO openai是 tool, anthropic是 user
-            messages.append({
-                "role": "user",
-                "content": str(tool_call),
-            })
-    return content or "finished"
+            messages.append(ToolMessage(
+                tool_id=tool_call["tool_id"],
+                tool_name=tool_call["tool_name"],
+                tool_result=tool_call["tool_result"],
+                tool_error=tool_call["tool_error"],
+            ))
+    return content or thinking or "finished"
