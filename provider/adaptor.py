@@ -1,3 +1,4 @@
+import json
 from base.types import EventType, Event, Tool, normalize_messages
 from log import logger
 
@@ -20,24 +21,9 @@ class LLMAdaptor:
         params = {}
 
         if self._provider == "anthropic":
-            system_msg = None
-            user_messages = []
-
-            for msg in messages:
-                if msg.get("role") == "system":
-                    system_msg = msg["content"]
-                elif msg.get("role") == "tool":
-                    user_messages.append({
-                        "role": "user",
-                        "content": msg["content"],
-                    })
-                else:
-                    user_messages.append(msg)
-
-            if system_msg:
-                params["system"] = system_msg
-
-            messages = user_messages
+            messages = self._convert_messages_anthropic(messages, params)
+        else:
+            messages = self._convert_messages_openai(messages)
 
         if tools:
             if all(isinstance(t, Tool) for t in tools):
@@ -53,6 +39,81 @@ class LLMAdaptor:
             yield from self._stream_openai(messages, params, **kwargs)
         else:
             yield from self._stream_anthropic(messages, params, **kwargs)
+
+    def _convert_messages_openai(self, messages):
+        converted = []
+        for msg in messages:
+            if msg.get("role") == "tool":
+                converted.append({
+                    "role": "tool",
+                    "tool_call_id": msg["tool_id"],
+                    "content": str(msg.get("tool_result") or msg.get("tool_error") or ""),
+                })
+            elif msg.get("role") == "assistant" and msg.get("tool_calls"):
+                assistant_msg = {"role": "assistant"}
+                if msg.get("content"):
+                    assistant_msg["content"] = msg["content"]
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": tc.get("arguments", "{}"),
+                        },
+                    }
+                    for tc in msg["tool_calls"]
+                ]
+                converted.append(assistant_msg)
+            else:
+                converted.append(msg)
+        return converted
+
+    def _convert_messages_anthropic(self, messages, params):
+        system_msg = None
+        user_messages = []
+        tool_results = []
+
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_msg = msg["content"]
+            elif msg.get("role") == "tool":
+                result_content = str(msg.get("tool_result") or msg.get("tool_error") or "")
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": msg["tool_id"],
+                    "content": result_content,
+                })
+            else:
+                # 先输出待处理的工具结果
+                if tool_results:
+                    user_messages.append({"role": "user", "content": tool_results})
+                    tool_results = []
+
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    # 转换assistant消息（含工具调用信息）
+                    content_blocks = []
+                    if msg.get("content"):
+                        content_blocks.append({"type": "text", "text": msg["content"]})
+                    for tc in msg["tool_calls"]:
+                        content_blocks.append({
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["name"],
+                            "input": json.loads(tc["arguments"]) if tc.get("arguments") else {},
+                        })
+                    user_messages.append({"role": "assistant", "content": content_blocks})
+                else:
+                    user_messages.append(msg)
+
+        # 输出剩余的工具结果
+        if tool_results:
+            user_messages.append({"role": "user", "content": tool_results})
+
+        if system_msg:
+            params["system"] = system_msg
+
+        return user_messages
 
     def _stream_openai(self, messages, params, **kwargs):
         tools = {}

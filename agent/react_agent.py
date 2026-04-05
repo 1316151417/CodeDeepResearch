@@ -21,14 +21,20 @@ def react(messages, tools, provider="anthropic"):
             messages,
             tools=tools,
         ):
-            if event.type == EventType.CONTENT_DELTA:
+            if event.type == EventType.CONTENT_START:
+                print("[Content Start]")
+            elif event.type == EventType.CONTENT_DELTA:
                 content += event.content
                 print(event.content, end="", flush=True)
-
+            elif event.type == EventType.CONTENT_END:
+                print("\n[Content End]")
+            elif event.type == EventType.THINKING_START:
+                print("[Thinking Start]")
             elif event.type == EventType.THINKING_DELTA:
                 thinking += event.content
                 print(event.content, end="", flush=True)
-
+            elif event.type == EventType.THINKING_END:
+                print("\n[Thinking End]")
             elif event.type == EventType.TOOL_CALL:
                 # 工具调用
                 tool_id = event.tool_id
@@ -38,13 +44,14 @@ def react(messages, tools, provider="anthropic"):
                 tool_call = {
                     "tool_id": tool_id,
                     "tool_name": tool_name,
+                    "tool_arguments": tool_arguments,
                     "tool_result": None,
                     "tool_error": None,
                 }
                 # 存入字典
                 tool_call_dict[tool_id] = tool_call
                 # 开始执行
-                print(f"\n[Tool Call] {tool_name}({tool_arguments})")
+                print(f"[Tool Call] {tool_name}({tool_arguments})")
                 try:
                     # 匹配工具
                     exec_tool = next((t for t in tools if t.name == tool_name), None)
@@ -68,7 +75,21 @@ def react(messages, tools, provider="anthropic"):
         
         # 没有结束封装下一轮消息
         # 封装LLM返回消息
-        if content:
+        if tool_call_dict:
+            # 有工具调用时，封装assistant消息（含工具调用信息）
+            assistant_msg = {"role": "assistant"}
+            if content:
+                assistant_msg["content"] = content
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc["tool_id"],
+                    "name": tc["tool_name"],
+                    "arguments": tc["tool_arguments"],
+                }
+                for tc in tool_call_dict.values()
+            ]
+            messages.append(assistant_msg)
+        elif content:
             messages.append(AssistantMessage(content))
         # 封装工具调用结果消息
         for tool_call in tool_call_dict.values():

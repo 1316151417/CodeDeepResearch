@@ -17,6 +17,7 @@ def call(messages, model="deepseek-reasoner", max_tokens=4096, **kwargs):
 
 
 def call_stream(messages, model="deepseek-reasoner", max_tokens=4096, **kwargs):
+    # print(f"call_stream messages: {messages}")
     return client.messages.create(
         model=model,
         messages=messages,
