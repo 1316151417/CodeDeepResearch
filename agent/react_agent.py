@@ -15,7 +15,8 @@ def react(messages, tools, provider="anthropic"):
 
         content = ""
         thinking = ""
-        tool_call_dict = {}
+        raw_tool_calls = []
+        tool_results = {}
 
         for event in adaptor.stream(
             messages,
@@ -36,67 +37,34 @@ def react(messages, tools, provider="anthropic"):
             elif event.type == EventType.THINKING_END:
                 print("\n[Thinking End]")
             elif event.type == EventType.TOOL_CALL:
-                # 工具调用
-                tool_id = event.tool_id
-                tool_name = event.tool_name
-                tool_arguments = event.tool_arguments
-                # 定义结构
-                tool_call = {
-                    "tool_id": tool_id,
-                    "tool_name": tool_name,
-                    "tool_arguments": tool_arguments,
-                    "tool_result": None,
-                    "tool_error": None,
-                }
-                # 存入字典
-                tool_call_dict[tool_id] = tool_call
-                # 开始执行
-                print(f"[Tool Call] {tool_name}({tool_arguments})")
+                raw_tool_calls.append(event.raw)
+                tool_results[event.tool_id] = {"result": None, "error": None}
+                print(f"[Tool Call] {event.tool_name}({event.tool_arguments})")
                 try:
-                    # 匹配工具
-                    exec_tool = next((t for t in tools if t.name == tool_name), None)
+                    exec_tool = next((t for t in tools if t.name == event.tool_name), None)
                     if exec_tool is None:
-                        raise ValueError(f"Tool '{tool_name}' not found")
-                    # 参数解析
-                    exec_tool_arguments = json.loads(tool_arguments) if tool_arguments else {}
-                    # 执行工具
+                        raise ValueError(f"Tool '{event.tool_name}' not found")
+                    exec_tool_arguments = json.loads(event.tool_arguments) if event.tool_arguments else {}
                     result = exec_tool(**exec_tool_arguments)
                     print(f"[Tool Result] {result}")
-                    # 更新工具调用结果
-                    tool_call["tool_result"] = result
+                    tool_results[event.tool_id]["result"] = result
                 except Exception as e:
-                    # 更新工具调用错误
-                    tool_call["tool_error"] = str(e)
+                    tool_results[event.tool_id]["error"] = str(e)
 
         # 判断是否结束
-        if not tool_call_dict:
+        if not raw_tool_calls:
             react_finished = True
             break
-        
-        # 没有结束封装下一轮消息
-        # 封装LLM返回消息
-        if tool_call_dict:
-            # 有工具调用时，封装assistant消息（含工具调用信息）
-            assistant_msg = {"role": "assistant"}
-            if content:
-                assistant_msg["content"] = content
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc["tool_id"],
-                    "name": tc["tool_name"],
-                    "arguments": tc["tool_arguments"],
-                }
-                for tc in tool_call_dict.values()
-            ]
-            messages.append(assistant_msg)
-        elif content:
-            messages.append(AssistantMessage(content))
-        # 封装工具调用结果消息
-        for tool_call in tool_call_dict.values():
+
+        # 封装下一轮消息
+        messages.append(AssistantMessage(content=content, tool_calls=raw_tool_calls))
+        for raw_tc in raw_tool_calls:
+            tid = raw_tc["id"]
+            tr = tool_results[tid]
             messages.append(ToolMessage(
-                tool_id=tool_call["tool_id"],
-                tool_name=tool_call["tool_name"],
-                tool_result=tool_call["tool_result"],
-                tool_error=tool_call["tool_error"],
+                tool_id=tid,
+                tool_name=raw_tc["name"],
+                tool_result=tr["result"],
+                tool_error=tr["error"],
             ))
     return content or "finished"

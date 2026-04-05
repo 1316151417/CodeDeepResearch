@@ -24,6 +24,7 @@ class Event:
     tool_id: Optional[str] = None
     tool_name: Optional[str] = None
     tool_arguments: Optional[str] = None
+    raw: Optional[dict] = None
     stop_reason: Optional[str] = None
     usage: Optional[dict] = None
 
@@ -114,8 +115,17 @@ class UserMessage(Message):
 
 
 class AssistantMessage(Message):
-    def __init__(self, content: str):
+    def __init__(self, content: str = "", tool_calls: list = None):
+        self.tool_calls = tool_calls or []
         super().__init__("assistant", content)
+
+    def to_dict(self) -> dict:
+        d = {"role": "assistant"}
+        if self.content:
+            d["content"] = self.content
+        if self.tool_calls:
+            d["tool_calls"] = self.tool_calls
+        return d
 
 
 class ToolMessage(Message):

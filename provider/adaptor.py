@@ -177,6 +177,7 @@ class LLMAdaptor:
                         tool_id=tool["id"],
                         tool_name=tool["name"],
                         tool_arguments=tool["arguments"],
+                        raw={"id": tool["id"], "name": tool["name"], "arguments": tool["arguments"]},
                     )
                 # 结束事件
                 yield Event(EventType.MESSAGE_END, stop_reason=choice.finish_reason, usage=usage)
@@ -233,6 +234,7 @@ class LLMAdaptor:
                         tool_id=tools[idx]["id"],
                         tool_name=tools[idx]["name"],
                         tool_arguments=tools[idx]["arguments"],
+                        raw={"id": tools[idx]["id"], "name": tools[idx]["name"], "arguments": tools[idx]["arguments"]},
                     )
                 # 思考/内容结束事件
                 elif idx in block_types:

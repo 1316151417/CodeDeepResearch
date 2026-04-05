@@ -55,8 +55,8 @@ def react_test():
         SystemMessage(SYSTEM_PROMPT),
         UserMessage("今天北京和上海的天气怎么样？"),
     ]
-    # result = react(messages, tools, provider="anthropic")
-    result = react(messages, tools, provider="openai")
+    result = react(messages, tools, provider="anthropic")
+    # result = react(messages, tools, provider="openai")
     # print(f"\n[Final Result]\n{result}")
 
 if __name__ == "__main__":
