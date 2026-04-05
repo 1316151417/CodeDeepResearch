@@ -1,0 +1,173 @@
+=== Anthropic Test ===
+{'message': {'id': '58b5206b-999c-40d3-853d-305bc385b83e', 'container': None, 'content': [], 'model': 'deepseek-reasoner', 'role': 'assistant', 'stop_details': None, 'stop_reason': None, 'stop_sequence': None, 'type': 'message', 'usage': {'cache_creation': None, 'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 384, 'inference_geo': None, 'input_tokens': 38, 'output_tokens': 0, 'server_tool_use': None, 'service_tier': 'standard'}}, 'type': 'message_start'}
+{'content_block': {'signature': '', 'thinking': '', 'type': 'thinking'}, 'index': 0, 'type': 'content_block_start'}
+{'delta': {'thinking': '用户', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '想知道', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '今天', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '北京', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '和', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '上海的', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '天气', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '情况', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '为了', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '提供', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '完整的', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '天气', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '信息', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '，', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '我需要', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking'
+ '获取', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '这两个', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '城市的', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '天气', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '数据和', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '温度', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '数据', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '我会', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '同时', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '获取', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '天气', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '和', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '获取', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '温度', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '的工具', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '对于', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '温度', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '，', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '我', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '默认', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '使用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '摄氏度', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '单位', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '，', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '因为', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '在中国', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '通常', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '使用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '摄氏度', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '那么', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '，', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '我需要', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'get', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '_', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'weather', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '和', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'get', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '_t', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'emperature', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '这两个', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '工具', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '对', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '每个', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '城市', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '（', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '北京', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '和', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '上海', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '）', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '都需要', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '所以', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '总共', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '是', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '四个', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '工具', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '：', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '两个', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '城市', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '各', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '一次', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'get', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '_', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'weather', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '，', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '各', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '一次', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'get', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '_t', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': 'emperature', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '我会', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '同时', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '发起', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '这些', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '调用', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'thinking': '。', 'type': 'thinking_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'delta': {'signature': '58b5206b-999c-40d3-853d-305bc385b83e', 'type': 'signature_delta'}, 'index': 0, 'type': 'content_block_delta'}
+{'index': 0, 'type': 'content_block_stop'}
+{'content_block': {'id': 'call_00_FynR2vUwE7RuKUegDSDq23LG', 'caller': None, 'input': {}, 'name': 'get_weather', 'type': 'tool_use'}, 'index': 1, 'type': 'content_block_start'}
+{'delta': {'partial_json': '{', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'city', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '北京', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '}', 'type': 'input_json_delta'}, 'index': 1, 'type': 'content_block_delta'}
+{'index': 1, 'type': 'content_block_stop'}
+{'content_block': {'id': 'call_01_LYsndIUNVsFjNYDxnRQGStrP', 'caller': None, 'input': {}, 'name': 'get_weather', 'type': 'tool_use'}, 'index': 2, 'type': 'content_block_start'}
+{'delta': {'partial_json': '{', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'city', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '上海', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '}', 'type': 'input_json_delta'}, 'index': 2, 'type': 'content_block_delta'}
+{'index': 2, 'type': 'content_block_stop'}
+{'content_block': {'id': 'call_02_rqigiqVOgCueVs1a5I6dkxoa', 'caller': None, 'input': {}, 'name': 'get_temperature', 'type': 'tool_use'}, 'index': 3, 'type': 'content_block_start'}
+{'delta': {'partial_json': '{', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'city', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '北京', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ', ', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'unit', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'c', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'elsius', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '}', 'type': 'input_json_delta'}, 'index': 3, 'type': 'content_block_delta'}
+{'index': 3, 'type': 'content_block_stop'}
+{'content_block': {'id': 'call_03_p11RKtCQSlyoxdfgXbsrvoF1', 'caller': None, 'input': {}, 'name': 'get_temperature', 'type': 'tool_use'}, 'index': 4, 'type': 'content_block_start'}
+{'delta': {'partial_json': '{', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'city', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '上海', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ', ', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'unit', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': ': ', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'c', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': 'elsius', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '"', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'delta': {'partial_json': '}', 'type': 'input_json_delta'}, 'index': 4, 'type': 'content_block_delta'}
+{'index': 4, 'type': 'content_block_stop'}
+{'delta': {'container': None, 'stop_details': None, 'stop_reason': 'tool_use', 'stop_sequence': None}, 'type': 'message_delta', 'usage': {'cache_creation_input_tokens': 0, 'cache_read_input_tokens': 384, 'input_tokens': 38, 'output_tokens': 275, 'server_tool_use': None, 'service_tier': 'standard'}}
+{'type': 'message_stop'}

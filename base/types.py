@@ -17,10 +17,11 @@ class EventType(Enum):
 class Event:
     type: EventType
     content: Optional[str] = None
-    tool_index: Optional[int] = None
+    tool_id: Optional[str] = None
     tool_name: Optional[str] = None
     tool_arguments: Optional[str] = None
-    finish_reason: Optional[str] = None
+    stop_reason: Optional[str] = None
+    usage: Optional[dict] = None
 
 
 @dataclass

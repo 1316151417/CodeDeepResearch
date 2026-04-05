@@ -13,9 +13,9 @@ def print_event(event):
     elif event.type == EventType.THINKING_DELTA:
         print(event.content, end="", flush=True)
     elif event.type == EventType.TOOL_CALL:
-        print(f"\n[TOOL_CALL#{event.tool_index}] name={event.tool_name} args={event.tool_arguments}")
+        print(f"\n[TOOL_CALL] id={event.tool_id} name={event.tool_name} args={event.tool_arguments}")
     elif event.type == EventType.MESSAGE_END:
-        print(f"\n[MESSAGE_END: {event.finish_reason}]")
+        print(f"\n[MESSAGE_END] stop_reason={event.stop_reason} usage={event.usage}")
 
 def anthropic_test():
     adaptor = LLMAdaptor(provider="anthropic")
@@ -42,7 +42,7 @@ def openai_test():
         print_event(event)
 
 if __name__ == "__main__":
-    print("=== OpenAI Test ===")
-    openai_test()
+    # print("=== OpenAI Test ===")
+    # openai_test()
     print("=== Anthropic Test ===")
     anthropic_test()
