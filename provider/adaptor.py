@@ -29,13 +29,7 @@ class LLMAdaptor:
                 elif msg.get("role") == "tool":
                     user_messages.append({
                         "role": "user",
-                        "content": [
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": msg.get("tool_call_id"),
-                                "content": msg.get("content")
-                            }
-                        ]
+                        "content": msg["content"],
                     })
                 else:
                     user_messages.append(msg)

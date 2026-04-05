@@ -116,15 +116,12 @@ class AssistantMessage(Message):
 
 class ToolMessage(Message):
     def __init__(self, tool_id: str, tool_name: str, tool_result=None, tool_error=None):
-        super().__init__(
-            "tool", 
-            str({
-                "tool_id": tool_id,
-                "tool_name": tool_name,
-                "tool_result": tool_result,
-                "tool_error": tool_error,
-            })
-        )
+        super().__init__("tool", str({
+            "tool_id": tool_id,
+            "tool_name": tool_name,
+            "tool_result": tool_result,
+            "tool_error": tool_error,
+        }))
 
 
 def _parse_param_descriptions(docstring: str) -> Dict[str, str]:
