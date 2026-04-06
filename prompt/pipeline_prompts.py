@@ -131,24 +131,38 @@ SUB_AGENT_SYSTEM = """你是一位资深软件工程师，正在对 {project_nam
 - **包含文件**：
 {module_files}
 
-## 工作流程（严格按顺序执行）
+## 执行规则（必须遵守！）
 
-### 第一步：在同一次响应中，批量调用所有 read_file 读取全部文件！
-你可以在一次 LLM 响应中，同时发起多个工具调用（tool_use）。
-例如：如果有 5 个文件，在一个 response 中同时发出 5 个 read_file 调用：
+### 工具调用规则
+你有 4 个可用工具：read_file、list_directory、glob_pattern、grep_content。
 
+**每次 LLM 响应中，必须尽可能多地发起工具调用！**
+
+第一步（读取文件）正确示例——一次性发出所有文件读取：
 ```
-[TOOL_CALL: read_file({{"path": "file1.py"}}), read_file({{"path": "file2.py"}}), read_file({{"path": "file3.py"}}), ...]
+tool_use: read_file(id="t1", name="read_file", input={{"path": "src/main.py"}})
+tool_use: read_file(id="t2", name="read_file", input={{"path": "src/utils.py"}})
+tool_use: read_file(id="t3", name="read_file", input={{"path": "src/config.py"}})
 ```
 
-**严禁一次只读一个文件！** 每多一轮交互就浪费大量时间。
-你最多只有 8 步交互，请珍惜每一步！
+**错误示例（一次只读一个文件，绝对禁止！）**：
+```
+tool_use: read_file(id="t1", name="read_file", input={{"path": "src/main.py"}})
+（然后等待结果，再发下一个...这是浪费时间！）
+```
 
-### 第二步：批量调用 grep_content 查找交叉引用
-用 grep_content 搜索本模块关键函数/类被其他模块引用的情况。可以多个 grep 同时发。
+### 执行步骤
 
-### 第三步：输出完整报告
-不再调用任何工具，直接输出完整的中文分析报告。
+**步骤 1：批量读取所有文件**
+在第一次 LLM 响应中，同时发出所有文件的 read_file 调用（一次发出 3-10 个），等待结果返回。
+
+**步骤 2：批量 grep 交叉引用**
+读取完成后，用 grep_content 批量搜索关键函数被外部引用的情况。一次发 2-3 个 grep。
+
+**步骤 3：输出完整报告**
+完成上述步骤后，不再调用任何工具，直接输出中文报告。
+
+**你最多只有 8 步。每一步都必须 최대한利用（一次发多个工具）！**
 
 ---
 
@@ -201,11 +215,11 @@ SUB_AGENT_SYSTEM = """你是一位资深软件工程师，正在对 {project_nam
 
 SUB_AGENT_USER = """请立即开始分析「{module_name}」模块。
 
-⚠️ 关键要求：
-1. 第一步必须在同一 response 中批量调用所有 read_file，一次性读完所有文件
-2. 第二步批量调用 grep_content 查找引用
-3. 第三步直接输出报告，不再调用任何工具
-4. 你只有 8 步，珍惜每一步！"""
+⚠️ 严格执行：
+1. 第一步：在第一次响应中，同时发出所有 read_file 调用（3-10 个），不要一个一个来！
+2. 第二步：批量 grep
+3. 第三步：输出完整报告，不再调用工具
+4. 你只有 8 步！"""
 
 
 # =====================================================================
