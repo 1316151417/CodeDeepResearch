@@ -2,7 +2,7 @@ import os
 import time
 import anthropic
 
-DEFAULT_TIMEOUT = 30  # 秒
+DEFAULT_TIMEOUT = 60  # 秒
 MAX_RETRIES = 1
 
 client = anthropic.Anthropic(

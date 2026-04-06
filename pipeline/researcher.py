@@ -1,6 +1,6 @@
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 from base.types import EventType, SystemMessage, UserMessage
 from agent.react_agent import stream as react_stream
@@ -22,7 +22,7 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
         print(f"  并行研究 {total} 个模块（最多 {max_eval_rounds} 轮评估）", flush=True)
         with ThreadPoolExecutor(max_workers=min(total, 4)) as executor:
             futures = {}
-            for i, module in enumerate(ctx.selected_modules):
+            for module in ctx.selected_modules:
                 future = executor.submit(
                     _research_single_module,
                     ctx, module, tools,
@@ -33,8 +33,13 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
             for future in as_completed(futures):
                 module = futures[future]
                 try:
-                    future.result()
+                    # 每个模块最多等 10 分钟，超时则放弃该模块
+                    future.result(timeout=600)
                     print(f"  ✓ [{module.name}] 完成 ({len(module.research_report)} 字符)", flush=True)
+                except FuturesTimeoutError:
+                    print(f"  ✗ [{module.name}] 研究超时（>600秒），强制跳过", flush=True)
+                    module.research_report = f"# 模块 {module.name} 分析报告\n\n研究超时，未能完成。"
+                    _write_module_report(report_dir, module)
                 except Exception as e:
                     import traceback
                     print(f"  ✗ [{module.name}] 失败: {e}", flush=True)
@@ -43,7 +48,7 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
                     _write_module_report(report_dir, module)
     else:
         print(f"  串行研究 {total} 个模块", flush=True)
-        for i, module in enumerate(ctx.selected_modules):
+        for module in ctx.selected_modules:
             _research_single_module(
                 ctx, module, tools,
                 max_eval_rounds, report_dir, verbose=True,
@@ -80,7 +85,6 @@ def _research_single_module(
 
         _print(verbose, f"  {tag} 生成完毕，报告 {len(report)} 字符")
 
-        # 最后1轮不评估，跳到最终生成
         if round_num >= max_eval_rounds:
             print(f"  {tag} 达到最大轮次，进入最终生成", flush=True)
             break

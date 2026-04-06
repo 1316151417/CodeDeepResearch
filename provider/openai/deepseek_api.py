@@ -2,7 +2,7 @@ import os
 import time
 from openai import OpenAI, APITimeoutError, APIConnectionError
 
-DEFAULT_TIMEOUT = 30  # 秒
+DEFAULT_TIMEOUT = 60  # 秒
 MAX_RETRIES = 1
 
 client = OpenAI(

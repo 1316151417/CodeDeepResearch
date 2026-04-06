@@ -1,18 +1,52 @@
 import json
+import threading
+from queue import Queue, Empty
 
 from base.types import EventType, SystemMessage, UserMessage
 from provider.adaptor import LLMAdaptor
 from pipeline.types import PipelineContext
 from prompt.pipeline_prompts import SCORER_SYSTEM, SCORER_USER
 
+CALL_LLM_TIMEOUT = 60
+
+
+def _call_llm_with_timeout(adaptor, messages, timeout):
+    """对 adaptor.stream() 的迭代包装超时保护"""
+    result_queue = Queue()
+
+    def worker():
+        try:
+            for event in adaptor.stream(messages):
+                result_queue.put(("event", event))
+            result_queue.put(("done", None))
+        except Exception as e:
+            result_queue.put(("exception", str(e)))
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    content = ""
+    while True:
+        try:
+            tag, data = result_queue.get(timeout=timeout)
+            if tag == "done":
+                return content
+            if tag == "exception":
+                raise RuntimeError(f"LLM stream exception: {data}")
+            if data.type == EventType.CONTENT_DELTA:
+                content += data.content
+        except Empty:
+            raise TimeoutError(f"LLM call timeout after {timeout}s")
+
 
 def _call_llm(provider: str, system: str, user: str) -> str:
     adaptor = LLMAdaptor(provider=provider)
-    content = ""
-    for event in adaptor.stream([SystemMessage(system), UserMessage(user)]):
-        if event.type == EventType.CONTENT_DELTA:
-            content += event.content
-    return content
+    messages = [SystemMessage(system), UserMessage(user)]
+    try:
+        return _call_llm_with_timeout(adaptor, messages, CALL_LLM_TIMEOUT)
+    except TimeoutError as e:
+        print(f"  [LLM 调用超时] {e}", flush=True)
+        return ""
 
 
 def score_and_rank_modules(ctx: PipelineContext) -> None:

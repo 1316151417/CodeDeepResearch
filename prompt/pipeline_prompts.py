@@ -130,11 +130,11 @@ SUB_AGENT_SYSTEM = """<role>资深软件工程师 & 代码架构分析师</role>
   <files>{module_files}</files>
 </module>
 
-## ⛔ HARD CONCURRENCY LIMIT: MAX 10 TOOL CALLS PER RESPONSE
+## 强制并发限制：每次响应最多 10 个工具调用
 
 你有 4 个可用工具：read_file、list_directory、glob_pattern、grep_content。
 
-**每次 LLM 响应中，必须一次性发出尽可能多的工具调用（最多 10 个）！**
+**每次 LLM 响应中，必须一次性发出尽可能多的工具调用（最多 10 个），不要逐个等待！**
 
 正确示例（一次性发 5 个 read_file）：
 ```
@@ -151,26 +151,26 @@ tool_use(id="t6", name="grep_content", input={{"pattern": "class.*Agent", "file_
 tool_use(id="t7", name="grep_content", input={{"pattern": "def stream", "file_pattern": "**/*.py"}})
 ```
 
-错误示例（一次只发 1 个 read_file，绝对禁止！）：
+**错误示例（一次只发 1 个 read_file，绝对禁止！）：**
 ```
 tool_use(id="t1", name="read_file", input={{"file_path": "src/main.py"}})
-...然后等待结果，再发下一个... 这是浪费时间！...
+...等待结果...再发下一个... 这是浪费时间！
 ```
 
 ## 工作流程（严格按顺序执行）
 
-### Phase 1: 批量读取
+### Phase 1: 批量读取（第 1 步）
 在第一次 LLM 响应中，同时发出所有文件的 read_file 调用（一次 5-10 个）。
 等待工具结果返回。
 
-### Phase 2: 批量 grep
+### Phase 2: 批量 grep（第 2-3 步）
 用 grep_content 批量搜索关键函数/类被外部引用的情况。
 一次发 2-3 个 grep。
 
-### Phase 3: 输出报告
+### Phase 3: 输出报告（第 4 步起）
 不再调用任何工具，直接输出中文报告。
 
-**你只有 8 步！每一步都必须 maksimal 利用！**
+**你只有 8 步！每一步都必须充分利用！**
 
 ## 报告要求（严格按以下结构输出）
 

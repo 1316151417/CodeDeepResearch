@@ -18,7 +18,10 @@ def aggregate_reports(ctx: PipelineContext) -> None:
         project_name=ctx.project_name,
         tree_text=ctx.tree_text,
     )
-    user_msg = AGGREGATOR_USER.format(module_reports=module_reports)
+    user_msg = AGGREGATOR_USER.format(
+        project_name=ctx.project_name,
+        module_reports=module_reports,
+    )
 
     messages = [SystemMessage(system_prompt), UserMessage(user_msg)]
 
