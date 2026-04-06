@@ -124,8 +124,9 @@ class UserMessage(Message):
 
 
 class AssistantMessage(Message):
-    def __init__(self, content: str = "", tool_calls: list = None):
+    def __init__(self, content: str = "", tool_calls: list = None, thinking: str = ""):
         self.tool_calls = tool_calls or []
+        self.thinking = thinking
         super().__init__("assistant", content)
 
     def to_dict(self) -> dict:
@@ -134,6 +135,7 @@ class AssistantMessage(Message):
             d["content"] = self.content
         if self.tool_calls:
             d["tool_calls"] = self.tool_calls
+        # thinking 不发送到 LLM，仅内部使用
         return d
 
 

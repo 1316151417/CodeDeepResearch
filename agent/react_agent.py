@@ -48,6 +48,7 @@ def stream(messages, tools, provider="anthropic", max_steps=MAX_STEP_CNT):
         step = step + 1
 
         content = ""
+        thinking = ""
         raw_tool_calls = []
         tool_results = {}
 
@@ -61,7 +62,9 @@ def stream(messages, tools, provider="anthropic", max_steps=MAX_STEP_CNT):
         try:
             for event in stream_iter:
                 yield event
-                if event.type == EventType.CONTENT_DELTA:
+                if event.type == EventType.THINKING_DELTA:
+                    thinking += event.content
+                elif event.type == EventType.CONTENT_DELTA:
                     content += event.content
                 elif event.type == EventType.TOOL_CALL:
                     raw_tool_calls.append(event.raw)
@@ -90,7 +93,8 @@ def stream(messages, tools, provider="anthropic", max_steps=MAX_STEP_CNT):
             react_finished = True
             break
 
-        messages.append(AssistantMessage(content=content, tool_calls=raw_tool_calls))
+        # thinking 存入消息的独立字段，不混入 content
+        messages.append(AssistantMessage(content=content, tool_calls=raw_tool_calls, thinking=thinking))
         for raw_tc in raw_tool_calls:
             tid = raw_tc["id"]
             tr = tool_results[tid]

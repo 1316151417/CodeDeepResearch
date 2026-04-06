@@ -311,22 +311,35 @@ EVAL_AGENT_USER = """<module_name>{module_name}</module_name>
 
 AGGREGATOR_SYSTEM = """<role>技术架构分析师</role>
 <memory_context>你的任务是基于各模块的深度分析报告，撰写完整的项目分析报告。</memory_context>
-<clarification_system>
-**WORKFLOW: CLARIFY → PLAN → RESEARCH → SYNTHESIZE → OUTPUT**
-1. 先审阅所有模块报告，找出信息不足的地方
-2. 制定补充计划（需要读哪些文件）
-3. 用工具补充关键细节
-4. 综合所有信息输出完整报告
-</clarification_system>
+<working_directory>{project_name}</working_directory>
 
 ## 项目目录结构
 {tree_text}
 
-## Phase 1: 研究（工具可用）
-用 read_file 和 grep_content 补充模块报告中的不足之处。
-每次响应最多发 5 个工具调用。
+## 强制并发限制：每次响应最多 10 个工具调用
 
-## Phase 2: 综合（无工具）
+你有 4 个可用工具：read_file、list_directory、glob_pattern、grep_content。
+
+**每次 LLM 响应中，必须一次性发出尽可能多的工具调用（最多 10 个），不要逐个等待！**
+
+正确示例（一次性发 5 个 read_file）：
+```
+tool_use(id="t1", name="read_file", input={{"file_path": "src/main.py"}})
+tool_use(id="t2", name="read_file", input={{"file_path": "src/config.py"}})
+tool_use(id="t3", name="grep_content", input={{"pattern": "class.*Engine", "file_pattern": "**/*.py"}})
+```
+
+**当你收集到足够的信息时，立即输出完整报告，不再调用工具！**
+
+## 工作流程
+
+### 步骤 1-2: 批量读取关键文件
+同时发出所有必要的 read_file 调用（一次 5-10 个）。
+
+### 步骤 3-4: 批量 grep 补充
+搜索跨模块引用、关键依赖关系。
+
+### 步骤 5+: 输出报告（不再调用工具）
 整合所有信息，输出完整中文报告。
 
 ## 报告结构（必须使用中文）
@@ -358,10 +371,12 @@ AGGREGATOR_SYSTEM = """<role>技术架构分析师</role>
 AGGREGATOR_USER = """<project_name>{project_name}</project_name>
 <module_reports>{module_reports}</module_reports>
 
+<task>立即开始撰写 {project_name} 项目的完整分析报告。</task>
+
 <critical_reminders>
-1. 先用工具补充细节，再输出完整报告
-2. 报告必须使用中文
-3. 最终输出报告时不再调用任何工具
+1. 先用工具批量补充关键细节（1-2 步内完成）
+2. 收集足够信息后，立即输出完整中文报告，不再调用任何工具
+3. 报告必须包含：项目概述、架构总览、模块详细分析、跨模块洞察、总结与建议
 </critical_reminders>"""
 
 # =====================================================================

@@ -121,17 +121,6 @@ def _research_single_module(
     module.research_report = report
     _print(verbose, f"  {tag} 最终报告 {len(report)} 字符")
 
-    # === 阶段 3：最终评估（只评估一次）===
-    print(f"  {tag} 最终评估...", flush=True)
-    eval_result = _evaluate_report(ctx, module, report)
-    score = eval_result.get("total_score", "?")
-    if eval_result.get("pass", False):
-        print(f"  {tag} 最终评估通过 (分数: {score})", flush=True)
-    else:
-        print(f"  {tag} 最终评估未通过 (分数: {score})，保留当前报告", flush=True)
-        for s in eval_result.get("suggestions", [])[:3]:
-            print(f"    → {s}", flush=True)
-
     # 写入报告
     _write_module_report(report_dir, module)
     print(f"  {tag} 报告已保存", flush=True)
