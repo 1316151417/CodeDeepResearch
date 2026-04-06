@@ -9,7 +9,10 @@ from prompt.pipeline_prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER
 def _call_llm(provider: str, system: str, user: str) -> str:
     adaptor = LLMAdaptor(provider=provider)
     content = ""
-    for event in adaptor.stream([SystemMessage(system), UserMessage(user)]):
+    for event in adaptor.stream(
+        [SystemMessage(system), UserMessage(user)],
+        response_format={"type": "json_object"},
+    ):
         if event.type == EventType.CONTENT_DELTA:
             content += event.content
     return content

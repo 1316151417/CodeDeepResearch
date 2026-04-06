@@ -28,7 +28,7 @@ def _resolve_max_tokens():
         return 16384
 
 
-def call(messages, model=None, max_tokens=None, **kwargs):
+def call(messages, model=None, max_tokens=None, response_format=None, **kwargs):
     for attempt in range(MAX_RETRIES + 1):
         try:
             response = client.chat.completions.create(
@@ -36,6 +36,7 @@ def call(messages, model=None, max_tokens=None, **kwargs):
                 messages=messages,
                 max_tokens=max_tokens or _resolve_max_tokens(),
                 timeout=DEFAULT_TIMEOUT,
+                response_format=response_format or {"type": "json_object"},
                 **kwargs,
             )
             return response.choices[0].message
@@ -47,7 +48,7 @@ def call(messages, model=None, max_tokens=None, **kwargs):
                 raise
 
 
-def call_stream(messages, model=None, max_tokens=None, **kwargs):
+def call_stream(messages, model=None, max_tokens=None, response_format=None, **kwargs):
     for attempt in range(MAX_RETRIES + 1):
         try:
             return client.chat.completions.create(
@@ -56,6 +57,7 @@ def call_stream(messages, model=None, max_tokens=None, **kwargs):
                 max_tokens=max_tokens or _resolve_max_tokens(),
                 stream=True,
                 timeout=DEFAULT_TIMEOUT,
+                response_format=response_format or {"type": "json_object"},
                 **kwargs,
             )
         except (APITimeoutError, APIConnectionError, TimeoutError) as e:

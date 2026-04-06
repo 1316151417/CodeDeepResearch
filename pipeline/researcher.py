@@ -7,7 +7,6 @@ from agent.react_agent import stream as react_stream
 from pipeline.types import PipelineContext, Module
 from prompt.pipeline_prompts import SUB_AGENT_SYSTEM, SUB_AGENT_USER, EVAL_AGENT_SYSTEM, EVAL_AGENT_USER
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
-from log.printer import print_event
 
 
 def research_modules(ctx: PipelineContext, report_dir: str) -> None:
@@ -20,14 +19,14 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
     total = len(ctx.selected_modules)
 
     if parallel and total > 1:
-        print(f"  并行模式：同时研究 {total} 个模块")
+        print(f"  并行研究 {total} 个模块（最多 {max_eval_rounds} 轮评估）", flush=True)
         with ThreadPoolExecutor(max_workers=min(total, 4)) as executor:
             futures = {}
             for i, module in enumerate(ctx.selected_modules):
                 future = executor.submit(
                     _research_single_module,
-                    ctx, module, tools, i, total,
-                    max_eval_rounds, report_dir,
+                    ctx, module, tools,
+                    max_eval_rounds, report_dir, verbose=False,
                 )
                 futures[future] = module
 
@@ -35,17 +34,19 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
                 module = futures[future]
                 try:
                     future.result()
-                    print(f"  ✓ 模块 {module.name} 研究完成")
+                    print(f"  ✓ [{module.name}] 完成 ({len(module.research_report)} 字符)", flush=True)
                 except Exception as e:
-                    print(f"  ✗ 模块 {module.name} 研究失败: {e}")
+                    import traceback
+                    print(f"  ✗ [{module.name}] 失败: {e}", flush=True)
+                    print(f"  ✗ 堆栈: {traceback.format_exc()}", flush=True)
                     module.research_report = f"# 模块 {module.name} 分析报告\n\n研究过程出错: {e}"
                     _write_module_report(report_dir, module)
     else:
-        print(f"  串行模式：逐个研究 {total} 个模块")
+        print(f"  串行研究 {total} 个模块", flush=True)
         for i, module in enumerate(ctx.selected_modules):
             _research_single_module(
-                ctx, module, tools, i, total,
-                max_eval_rounds, report_dir,
+                ctx, module, tools,
+                max_eval_rounds, report_dir, verbose=True,
             )
 
 
@@ -53,51 +54,83 @@ def _research_single_module(
     ctx: PipelineContext,
     module: Module,
     tools: list,
-    index: int,
-    total: int,
     max_eval_rounds: int,
     report_dir: str,
+    verbose: bool = True,
 ) -> None:
-    prefix = f"[{index+1}/{total}]"
-    print(f"\n{'='*60}")
-    print(f"{prefix} 开始研究模块: {module.name}")
-    print(f"  文件: {', '.join(module.files)}")
-    print(f"{'='*60}")
+    tag = f"[{module.name}]"
+    _print(verbose, f"  {tag} 开始研究 ({len(module.files)} 个文件)")
 
-    # 生成-评估循环
+    # === 阶段 1：多轮生成 + 评估反馈 ===
     for round_num in range(1, max_eval_rounds + 1):
-        print(f"\n  {prefix} 第 {round_num}/{max_eval_rounds} 轮生成")
+        _print(verbose, f"  {tag} === 第 {round_num}/{max_eval_rounds} 轮 ===")
 
-        # 生成报告
+        _print(verbose, f"  {tag} 构建提示词...")
         messages = _build_generate_messages(ctx, module, round_num)
+
+        _print(verbose or round_num == 1, f"  {tag} 调用 ReAct agent 生成报告...")
         events = react_stream(
             messages=messages,
             tools=tools,
             provider=ctx.provider,
             max_steps=ctx.max_sub_agent_steps,
         )
-        report = _collect_agent_output(events, f"{prefix} [生成]")
+        report = _collect_agent_output(events, tag, verbose)
         module.research_report = report
 
-        # 最后一轮或只有一轮时跳过评估
+        _print(verbose, f"  {tag} 生成完毕，报告 {len(report)} 字符")
+
+        # 最后1轮不评估，跳到最终生成
         if round_num >= max_eval_rounds:
-            print(f"  {prefix} 达到最大轮次，采用当前报告")
+            print(f"  {tag} 达到最大轮次，进入最终生成", flush=True)
             break
 
         # 评估报告
+        print(f"  {tag} 正在评估报告质量...", flush=True)
         eval_result = _evaluate_report(ctx, module, report)
+        score = eval_result.get("total_score", "?")
+
         if eval_result.get("pass", False):
-            print(f"  {prefix} 评估通过 (总分: {eval_result.get('total_score', '?')})")
+            print(f"  {tag} 评估通过 (分数: {score})，进入最终生成", flush=True)
             break
         else:
             suggestions = eval_result.get("suggestions", [])
-            print(f"  {prefix} 评估未通过 (总分: {eval_result.get('total_score', '?')})")
-            for s in suggestions:
-                print(f"    → {s}")
+            print(f"  {tag} 评估未通过 (分数: {score})，改进后重试", flush=True)
+            if verbose:
+                for s in suggestions:
+                    print(f"    → {s}", flush=True)
+
+    # === 阶段 2：最终无工具生成报告 ===
+    _print(verbose, f"  {tag} 构建最终报告（无工具模式）...")
+    final_messages = _build_final_messages(ctx, module)
+    final_directive = "已收集足够上下文，请立即生成完整的中文分析报告。不再调用任何工具，直接输出报告。"
+    final_messages.append(UserMessage(final_directive))
+
+    _print(verbose, f"  {tag} 最终生成，无工具模式...")
+    events = react_stream(
+        messages=final_messages,
+        tools=[],  # 无工具
+        provider=ctx.provider,
+        max_steps=ctx.max_sub_agent_steps,
+    )
+    report = _collect_agent_output(events, tag, verbose)
+    module.research_report = report
+    _print(verbose, f"  {tag} 最终报告 {len(report)} 字符")
+
+    # === 阶段 3：最终评估（只评估一次）===
+    print(f"  {tag} 最终评估...", flush=True)
+    eval_result = _evaluate_report(ctx, module, report)
+    score = eval_result.get("total_score", "?")
+    if eval_result.get("pass", False):
+        print(f"  {tag} 最终评估通过 (分数: {score})", flush=True)
+    else:
+        print(f"  {tag} 最终评估未通过 (分数: {score})，保留当前报告", flush=True)
+        for s in eval_result.get("suggestions", [])[:3]:
+            print(f"    → {s}", flush=True)
 
     # 写入报告
     _write_module_report(report_dir, module)
-    print(f"  {prefix} 报告已写入 ({len(module.research_report)} 字符)")
+    print(f"  {tag} 报告已保存", flush=True)
 
 
 def _build_generate_messages(ctx: PipelineContext, module: Module, round_num: int) -> list:
@@ -111,20 +144,43 @@ def _build_generate_messages(ctx: PipelineContext, module: Module, round_num: in
 
     messages = [SystemMessage(system_prompt), UserMessage(user_prompt)]
 
-    # 如果是第 2+ 轮，在 user message 中附带上轮报告和改进方向
     if round_num > 1 and module.research_report:
         improvement_hints = getattr(module, '_eval_suggestions', [])
         hints_text = "\n".join(f"  - {s}" for s in improvement_hints) if improvement_hints else "无具体建议"
         messages.append(UserMessage(
-            f"上一轮的评估发现以下不足，请针对这些问题改进报告：\n{hints_text}\n\n"
+            f"上一轮评估发现以下不足，请针对性改进：\n{hints_text}\n\n"
             f"请重新读取相关文件，补充缺失的分析，输出改进后的完整报告。"
         ))
 
     return messages
 
 
+def _build_final_messages(ctx: PipelineContext, module: Module) -> list:
+    """最终生成阶段：基于已有报告和评估建议，直接生成最终报告"""
+    system_prompt = SUB_AGENT_SYSTEM.format(
+        module_name=module.name,
+        project_name=ctx.project_name,
+        module_description=module.description,
+        module_files="\n".join(f"  - {f}" for f in module.files),
+    )
+    user_prompt = SUB_AGENT_USER.format(module_name=module.name)
+
+    messages = [SystemMessage(system_prompt), UserMessage(user_prompt)]
+
+    # 附上之前的报告和研究结论
+    if module.research_report:
+        suggestions = getattr(module, '_eval_suggestions', [])
+        hints_text = "\n".join(f"  - {s}" for s in suggestions) if suggestions else "无具体建议"
+        messages.append(UserMessage(
+            f"以下是之前的研究结论，可作为参考：\n{module.research_report[:3000]}\n\n"
+            f"评估建议：\n{hints_text}\n\n"
+            f"请综合以上信息，生成最终的完整分析报告。"
+        ))
+
+    return messages
+
+
 def _evaluate_report(ctx: PipelineContext, module: Module, report: str) -> dict:
-    """用 LLM 评估报告质量，返回评估结果 dict"""
     from pipeline.llm_filter import _call_llm
 
     system_prompt = EVAL_AGENT_SYSTEM.format(
@@ -138,37 +194,41 @@ def _evaluate_report(ctx: PipelineContext, module: Module, report: str) -> dict:
         report=report,
     )
 
+    print(f"  [{module.name}] 调用评估 LLM...", flush=True)
     response = _call_llm(ctx.provider, system_prompt, user_prompt)
+    print(f"  [{module.name}] 评估响应 {len(response)} 字符: {response[:200]}...", flush=True)
 
     try:
         result = json.loads(_extract_json(response))
-    except json.JSONDecodeError:
-        # 解析失败默认通过
+        print(f"  [{module.name}] 评估解析成功: {result}", flush=True)
+    except json.JSONDecodeError as e:
+        print(f"  [{module.name}] 评估 JSON 解析失败: {e}", flush=True)
+        print(f"  [{module.name}] 原始响应: {response[:500]}", flush=True)
         return {"pass": True, "total_score": 30, "suggestions": []}
 
-    # 保存建议到 module 上供下一轮使用
     module._eval_suggestions = result.get("suggestions", [])
-
     return result
 
 
-def _collect_agent_output(events, prefix: str = "") -> str:
-    """从 ReAct agent 事件流中提取最终输出"""
+def _collect_agent_output(events, tag: str, verbose: bool) -> str:
     step_contents = {}
     had_tool_calls_on_last_step = False
+    tool_call_count = 0
+    step_count = 0
 
     for event in events:
         if event.type == EventType.STEP_START:
             had_tool_calls_on_last_step = False
+            step_count += 1
+            if not verbose:
+                print(f"  {tag} 步骤 {step_count}...", flush=True)
         if event.type == EventType.STEP_END and event.content:
             step_contents[event.step] = event.content
-            print(f"  {prefix} 步骤 {event.step} 完成 ({len(event.content)} 字符)")
         if event.type == EventType.TOOL_CALL:
             had_tool_calls_on_last_step = True
-            print(f"  {prefix} 调用工具: {event.tool_name}")
-        if event.type == EventType.TOOL_CALL_SUCCESS:
-            result_len = len(event.tool_result) if event.tool_result else 0
-            print(f"  {prefix} 工具结果: {result_len} 字符")
+            tool_call_count += 1
+            if not verbose:
+                print(f"  {tag}   工具: {event.tool_name}", flush=True)
 
     if not step_contents:
         return "（未能生成报告）"
@@ -180,14 +240,18 @@ def _collect_agent_output(events, prefix: str = "") -> str:
 
 
 def _write_module_report(report_dir: str, module: Module) -> None:
-    """将模块报告写入文件"""
     path = os.path.join(report_dir, f"模块分析报告-{module.name}.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write(module.research_report)
 
 
+def _print(verbose: bool, msg: str) -> None:
+    """条件打印，始终 flush"""
+    if verbose:
+        print(msg, flush=True)
+
+
 def _extract_json(text: str) -> str:
-    """从 LLM 响应中提取 JSON"""
     text = text.strip()
     if "```" in text:
         start = text.find("```")

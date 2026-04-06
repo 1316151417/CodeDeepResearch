@@ -3,7 +3,7 @@
   "model": "deepseek-chat",
   "max_tokens": 16384,
   "max_sub_agents": 5,
-  "max_sub_agent_steps": 15,
-  "max_eval_rounds": 3,
+  "max_sub_agent_steps": 8,
+  "max_eval_rounds": 1,
   "parallel_research": true
 }

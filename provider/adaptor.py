@@ -21,7 +21,7 @@ class LLMAdaptor:
 
         self._provider = provider
 
-    def stream(self, messages, tools=None, **kwargs):
+    def stream(self, messages, tools=None, response_format=None, **kwargs):
         messages = normalize_messages(messages)
         params = {}
 
@@ -32,6 +32,10 @@ class LLMAdaptor:
             messages = self._convert_messages_anthropic(messages, params)
         else:
             messages = self._convert_messages_openai(messages)
+
+        # JSON mode (仅当明确指定时启用，且仅适用于 OpenAI)
+        if response_format is not None and self._provider == "openai":
+            params["response_format"] = response_format
 
         if tools:
             if all(isinstance(t, Tool) for t in tools):

@@ -46,11 +46,16 @@ def stream(messages, tools, provider="anthropic", max_steps=MAX_STEP_CNT):
                     exec_tool = next((t for t in tools if t.name == event.tool_name), None)
                     if exec_tool is None:
                         raise ValueError(f"Tool '{event.tool_name}' not found")
+                    print(f"  [DEBUG] tool_arguments repr={repr(event.tool_arguments)[:200]}", flush=True)
                     exec_tool_arguments = json.loads(event.tool_arguments) if event.tool_arguments else {}
+                    print(f"  [DEBUG] exec_tool_arguments={exec_tool_arguments}", flush=True)
                     result = exec_tool(**exec_tool_arguments)
                     tool_results[event.tool_id]["result"] = result
                     yield Event(type=EventType.TOOL_CALL_SUCCESS, tool_id=event.tool_id, tool_name=event.tool_name, tool_arguments=event.tool_arguments, tool_result=result)
                 except Exception as e:
+                    import traceback
+                    err_msg = f"工具执行失败 {event.tool_name}: {e}, 参数: {event.tool_arguments}, 堆栈: {traceback.format_exc()}"
+                    print(f"  !!! {err_msg}", flush=True)
                     tool_results[event.tool_id]["error"] = str(e)
                     yield Event(type=EventType.TOOL_CALL_FAILED, tool_id=event.tool_id, tool_name=event.tool_name, tool_arguments=event.tool_arguments, tool_error=e)
 
