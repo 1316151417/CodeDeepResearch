@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeDeepResearch - Pipeline Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1419; color: #e6edf3; height: 100vh; overflow: hidden; }
+  #app { display: grid; grid-template-rows: 48px 1fr; grid-template-columns: 260px 1fr 340px; height: 100vh; }
+
+  /* ── Header ── */
+  #header { grid-column: 1 / -1; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  #header h1 { font-size: 16px; font-weight: 600; color: #58a6ff; }
+  #connection-status { font-size: 12px; padding: 2px 8px; border-radius: 12px; background: #21262d; }
+  #connection-status.connected { color: #3fb950; }
+  #connection-status.disconnected { color: #f85149; }
+  #header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; color: #8b949e; }
+
+  /* ── Left sidebar: run list ── */
+  #sidebar { grid-row: 2; background: #161b22; border-right: 1px solid #30363d; overflow-y: auto; }
+  #sidebar h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #8b949e; padding: 12px 12px 8px; position: sticky; top: 0; background: #161b22; }
+  .run-item { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #21262d; transition: background 0.15s; }
+  .run-item:hover { background: #21262d; }
+  .run-item.active { background: #1f6feb22; border-left: 2px solid #58a6ff; }
+  .run-item .run-name { font-size: 13px; font-weight: 500; color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .run-item .run-meta { font-size: 11px; color: #8b949e; margin-top: 2px; display: flex; gap: 8px; }
+  .run-item .run-status { padding: 1px 6px; border-radius: 8px; font-size: 10px; }
+  .run-status.completed { background: #3fb95033; color: #3fb950; }
+  .run-status.running { background: #58a6ff33; color: #58a6ff; }
+  .run-status.error { background: #f8514933; color: #f85149; }
+
+  /* ── Main area: event timeline ── */
+  #main { grid-row: 2; overflow-y: auto; padding: 12px; }
+  #main-empty { color: #8b949e; font-size: 13px; text-align: center; margin-top: 60px; }
+
+  .event-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; margin-bottom: 6px; animation: slideIn 0.2s ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .event-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .event-stage { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; text-transform: uppercase; }
+  .stage-pipeline { background: #8b5cf622; color: #a78bfa; }
+  .stage-scanner { background: #3fb95033; color: #3fb950; }
+  .stage-llm_filter { background: #58a6ff33; color: #58a6ff; }
+  .stage-decomposer { background: #f0883e33; color: #f0883e; }
+  .stage-scorer { background: #db61a233; color: #db61a2; }
+  .stage-researcher { background: #e3b34133; color: #e3b341; }
+  .stage-aggregator { background: #f8514933; color: #f85149; }
+  .stage-other { background: #30363d; color: #8b949e; }
+  .event-type { font-size: 12px; font-weight: 600; color: #e6edf3; }
+  .event-time { font-size: 11px; color: #8b949e; margin-left: auto; }
+  .event-data { font-size: 12px; color: #8b949e; line-height: 1.5; word-break: break-all; }
+  .event-data .key { color: #79c0ff; }
+  .event-data .val { color: #a5d6ff; }
+  .event-data .val-good { color: #3fb950; }
+  .event-data .val-warn { color: #e3b341; }
+  .event-data .val-bad { color: #f85149; }
+
+  /* ── Right panel: details + config ── */
+  #right { grid-row: 2; background: #0d1117; border-left: 1px solid #30363d; display: flex; flex-direction: column; overflow: hidden; }
+  #right-tabs { display: flex; border-bottom: 1px solid #30363d; }
+  .tab-btn { flex: 1; padding: 10px; font-size: 12px; font-weight: 500; color: #8b949e; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab-btn:hover { color: #e6edf3; }
+  .tab-btn.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  #right-content { flex: 1; overflow-y: auto; }
+
+  /* Summary tab */
+  #tab-summary { padding: 12px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 10px; }
+  .stat-card .stat-label { font-size: 11px; color: #8b949e; text-transform: uppercase; }
+  .stat-card .stat-value { font-size: 20px; font-weight: 600; color: #e6edf3; margin-top: 2px; }
+  .stat-card .stat-value.good { color: #3fb950; }
+  .stat-card .stat-value.warn { color: #e3b341; }
+
+  /* Config tab */
+  #tab-config { padding: 0; }
+  .config-section { border-bottom: 1px solid #30363d; }
+  .config-section-header { padding: 10px 12px; font-size: 12px; font-weight: 600; color: #8b949e; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: #161b22; }
+  .config-section-header:hover { background: #21262d; }
+  .config-section-body { padding: 10px 12px; font-size: 12px; }
+  .config-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .config-row label { color: #8b949e; min-width: 80px; }
+  .config-row input, .config-row select { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e6edf3; padding: 4px 8px; font-size: 12px; }
+  .config-row input:focus, .config-row select:focus { outline: none; border-color: #58a6ff; }
+  .prompt-edit { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #e6edf3; font-family: 'Fira Code', monospace; font-size: 11px; resize: vertical; min-height: 80px; padding: 8px; }
+  .prompt-edit:focus { outline: none; border-color: #58a6ff; }
+  .btn { padding: 4px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; font-weight: 500; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-secondary { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
+  .config-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+
+  /* Stage progress */
+  .stage-progress { margin-top: 12px; }
+  .stage-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+  .stage-item .sp-name { font-size: 12px; color: #8b949e; min-width: 80px; }
+  .stage-item .sp-bar { flex: 1; height: 4px; background: #21262d; border-radius: 2px; overflow: hidden; }
+  .stage-item .sp-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .sp-done .sp-fill { background: #3fb950; }
+  .sp-active .sp-fill { background: #58a6ff; }
+  .sp-pending .sp-fill { background: #30363d; }
+  .sp-done .sp-name { color: #3fb950; }
+  .sp-active .sp-name { color: #58a6ff; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="header">
+    <h1>CodeDeepResearch</h1>
+    <span id="connection-status" class="disconnected">Disconnected</span>
+    <div id="header-right">
+      <span id="current-run-display"></span>
+      <span id="event-count">0 events</span>
+      <span id="last-update"></span>
+    </div>
+  </div>
+
+  <!-- Sidebar: run list -->
+  <div id="sidebar">
+    <h3>Run History</h3>
+    <div id="run-list"></div>
+  </div>
+
+  <!-- Main: event timeline -->
+  <div id="main">
+    <div id="main-empty">Waiting for pipeline events...</div>
+    <div id="event-list"></div>
+  </div>
+
+  <!-- Right: details + config -->
+  <div id="right">
+    <div id="right-tabs">
+      <button class="tab-btn active" data-tab="summary">Summary</button>
+      <button class="tab-btn" data-tab="config">Config</button>
+    </div>
+    <div id="right-content">
+      <div id="tab-summary">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">All Files</div><div class="stat-value" id="stat-all-files">-</div></div>
+          <div class="stat-card"><div class="stat-label">Filtered</div><div class="stat-value" id="stat-filtered">-</div></div>
+          <div class="stat-card"><div class="stat-label">Modules</div><div class="stat-value" id="stat-modules">-</div></div>
+          <div class="stat-card"><div class="stat-label">Selected</div><div class="stat-value good" id="stat-selected">-</div></div>
+        </div>
+        <div class="stage-progress" id="stage-progress"></div>
+      </div>
+      <div id="tab-config" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+const STAGES = ['scanner', 'llm_filter', 'decomposer', 'scorer', 'researcher', 'aggregator'];
+const STAGE_LABELS = {scanner:'1.Scan', llm_filter:'2.Filter', decomposer:'3.Decomp', scorer:'4.Score', researcher:'5.Research', aggregator:'6.Aggregate'};
+let eventCount = 0;
+let selectedRunId = null;
+let currentRunId = null;
+let runs = [];
+let config = {};
+let promptEdits = {};
+
+// ─── SSE Connection ─────────────────────────────────────────────────────────
+let es = null;
+let reconnectTimer = null;
+
+function connectSSE() {
+  es = new EventSource('/sse');
+  es.onopen = () => setConnectionStatus('connected');
+  es.onerror = () => {
+    setConnectionStatus('disconnected');
+    es.close();
+    reconnectTimer = setTimeout(connectSSE, 3000);
+  };
+  es.onmessage = (e) => {
+    try {
+      const event = JSON.parse(e.data);
+      handleEvent(event);
+    } catch {}
+  };
+}
+
+function setConnectionStatus(status) {
+  const el = document.getElementById('connection-status');
+  el.className = status;
+  el.textContent = status === 'connected' ? 'Live' : 'Disconnected';
+}
+
+function handleEvent(event) {
+  eventCount++;
+  document.getElementById('event-count').textContent = eventCount + ' events';
+  document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+
+  if (event.type === 'run_started') {
+    currentRunId = event.data.run_id;
+    document.getElementById('current-run-display').textContent = event.data.project_name || currentRunId;
+    loadRuns();
+    return;
+  }
+  if (event.type === 'run_finished') {
+    currentRunId = null;
+    document.getElementById('current-run-display').textContent = '';
+    loadRuns();
+    return;
+  }
+
+  // Normal pipeline event
+  if (event.run_id) currentRunId = event.run_id;
+  renderEventCard(event);
+  updateSummary(event);
+  updateStageProgress(event);
+}
+
+connectSSE();
+
+// ─── API helpers ─────────────────────────────────────────────────────────────
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadRuns() {
+  try {
+    runs = await api('/api/runs');
+    renderRunList();
+  } catch {}
+}
+
+async function loadRun(runId) {
+  try {
+    return await api('/api/runs/' + runId);
+  } catch {}
+}
+
+async function loadConfig() {
+  try {
+    config = await api('/api/config');
+    renderConfigTab();
+  } catch {}
+}
+
+async function savePrompt(name) {
+  const content = promptEdits[name] || '';
+  await api('/api/config/prompt/' + name, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({content})
+  });
+}
+
+// ─── Run List ────────────────────────────────────────────────────────────────
+function renderRunList() {
+  const el = document.getElementById('run-list');
+  if (!runs.length) {
+    el.innerHTML = '<div style="padding:12px;font-size:12px;color:#8b949e">No runs yet</div>';
+    return;
+  }
+  el.innerHTML = runs.map(r => `
+    <div class="run-item ${r.run_id === selectedRunId ? 'active' : ''}" onclick="selectRun('${r.run_id}')">
+      <div class="run-name">${r.project_name || r.run_id}</div>
+      <div class="run-meta">
+        <span class="run-status ${r.status}">${r.status}</span>
+        <span>${r.total_duration_s ? (r.total_duration_s / 60).toFixed(1) + 'm' : '-'}</span>
+        <span>${r.started_at ? new Date(r.started_at).toLocaleString() : ''}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function selectRun(runId) {
+  selectedRunId = runId;
+  renderRunList();
+  const run = await loadRun(runId);
+  if (!run) return;
+  renderRunEvents(run.events || []);
+  renderRunSummary(run);
+}
+
+// ─── Event Timeline ──────────────────────────────────────────────────────────
+function renderEventCard(event) {
+  const mainEmpty = document.getElementById('main-empty');
+  if (mainEmpty) mainEmpty.remove();
+
+  const eventList = document.getElementById('event-list');
+  const card = document.createElement('div');
+  card.className = 'event-card';
+  const stage = event.stage || 'other';
+  const stageClass = STAGE_LABELS[stage] ? 'stage-' + stage : 'stage-other';
+  const stageLabel = STAGE_LABELS[stage] || stage;
+  const time = event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '';
+
+  card.innerHTML = `
+    <div class="event-header">
+      <span class="event-stage ${stageClass}">${stageLabel}</span>
+      <span class="event-type">${event.type}</span>
+      <span class="event-time">${time}</span>
+    </div>
+    <div class="event-data">${formatEventData(event.data)}</div>
+  `;
+  eventList.insertBefore(card, eventList.firstChild);
+  // Keep max 200 events displayed
+  while (eventList.children.length > 200) eventList.removeChild(eventList.lastChild);
+}
+
+function renderEventCards(events) {
+  const mainEmpty = document.getElementById('main-empty');
+  if (mainEmpty) mainEmpty.remove();
+  const eventList = document.getElementById('event-list');
+  eventList.innerHTML = '';
+  events.slice(-100).forEach(e => renderEventCard(e));
+}
+
+function formatEventData(data) {
+  if (!data || typeof data !== 'object') return '';
+  const lines = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (v === null || v === undefined || v === '') continue;
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    const valClass = classifyVal(val, k);
+    lines.push(`<span class="key">${k}</span>: <span class="val ${valClass}">${escHtml(val)}</span>`);
+  }
+  return lines.join('&nbsp;&nbsp;');
+}
+
+function classifyVal(val, key) {
+  const bad = ['error', 'fail', 'false', '0', 'timeout'];
+  const good = ['completed', 'success', 'true', 'passed'];
+  const warn = ['warning', 'retry'];
+  const lower = val.toLowerCase();
+  if (bad.some(w => lower.includes(w))) return 'val-bad';
+  if (good.some(w => lower.includes(w))) return 'val-good';
+  if (warn.some(w => lower.includes(w))) return 'val-warn';
+  return '';
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Summary Tab ─────────────────────────────────────────────────────────────
+function updateSummary(event) {
+  const d = event.data || {};
+  if (event.type === 'stage_scan_complete') {
+    setStat('stat-all-files', d.all_files_count);
+    setStat('stat-filtered', d.filtered_files_count);
+  }
+  if (event.type === 'stage_filter_complete') {
+    setStat('stat-filtered', d.filtered_in_count);
+  }
+  if (event.type === 'stage_decompose_complete') {
+    setStat('stat-modules', d.module_count);
+  }
+  if (event.type === 'stage_score_complete') {
+    setStat('stat-selected', Object.keys(d.module_scores || {}).length);
+  }
+  if (event.type === 'stage_research_complete') {
+    // accumulate selected
+  }
+  if (event.type === 'pipeline_end') {
+    setStat('stat-selected', d.selected_module_count);
+  }
+}
+
+function setStat(id, val) {
+  const el = document.getElementById(id);
+  if (el && val !== undefined) el.textContent = val;
+}
+
+let stageState = {};
+function updateStageProgress(event) {
+  const stage = event.stage;
+  const type = event.type;
+  if (!stage) return;
+
+  if (type === 'stage_start') {
+    stageState[stage] = 'active';
+  } else if (type.endsWith('_complete') || type === 'stage_end') {
+    stageState[stage] = 'done';
+  } else if (type === 'stage_error') {
+    stageState[stage] = 'error';
+  }
+  renderStageProgress();
+}
+
+function renderStageProgress() {
+  const el = document.getElementById('stage-progress');
+  el.innerHTML = STAGES.map(s => {
+    const state = stageState[s] || 'pending';
+    const pct = state === 'done' ? 100 : state === 'active' ? 50 : 0;
+    return `<div class="stage-item sp-${state}">
+      <span class="sp-name">${STAGE_LABELS[s]}</span>
+      <div class="sp-bar"><div class="sp-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderRunSummary(run) {
+  const s = run.summary || {};
+  setStat('stat-all-files', s.all_files_count || '-');
+  setStat('stat-filtered', s.filtered_files_count || s.filtered_in_count || '-');
+  setStat('stat-modules', s.module_count || '-');
+  setStat('stat-selected', s.selected_module_count || '-');
+  stageState = {};
+  renderStageProgress();
+}
+
+// ─── Config Tab ─────────────────────────────────────────────────────────────
+function renderConfigTab() {
+  const el = document.getElementById('tab-config');
+  const prompts = config.prompts || {};
+  const pipeline = config.pipeline || {};
+  const models = config.models || {};
+
+  el.innerHTML = `
+    <div class="config-section">
+      <div class="config-section-header">Models</div>
+      <div class="config-section-body">
+        <div class="config-row"><label>Provider</label><input value="${models.provider || ''}" readonly></div>
+        <div class="config-row"><label>Lite</label><input value="${models.lite_model || ''}" readonly></div>
+        <div class="config-row"><label>Pro</label><input value="${models.pro_model || ''}" readonly></div>
+        <div class="config-row"><label>Max</label><input value="${models.max_model || ''}" readonly></div>
+      </div>
+    </div>
+    <div class="config-section">
+      <div class="config-section-header">Pipeline</div>
+      <div class="config-section-body">
+        <div class="config-row"><label>Max Agents</label><input value="${pipeline.max_sub_agents || ''}" readonly></div>
+        <div class="config-row"><label>Max Steps</label><input value="${pipeline.max_sub_agent_steps || ''}" readonly></div>
+        <div class="config-row"><label>Eval Rounds</label><input value="${pipeline.max_eval_rounds || ''}" readonly></div>
+        <div class="config-row"><label>Parallel</label><input value="${pipeline.parallel_research || ''}" readonly></div>
+      </div>
+    </div>
+    <div class="config-section">
+      <div class="config-section-header">Prompts (click to edit)</div>
+      <div class="config-section-body">
+        ${Object.keys(prompts).map(name => `
+          <div style="margin-bottom:8px">
+            <div style="font-size:11px;color:#8b949e;margin-bottom:4px">${name}</div>
+            <textarea class="prompt-edit" id="prompt-${name}" rows="4" onchange="promptEdits['${name}']=this.value">${prompts[name] || ''}</textarea>
+            <div class="config-actions"><button class="btn btn-primary" onclick="savePrompt('${name}')">Save</button></div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ─── Tab switching ───────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-summary').style.display = tab === 'summary' ? 'block' : 'none';
+    document.getElementById('tab-config').style.display = tab === 'config' ? 'block' : 'none';
+    if (tab === 'config') loadConfig();
+  });
+});
+
+// ─── Init ───────────────────────────────────────────────────────────────────
+loadRuns();
+renderStageProgress();
+setInterval(loadRuns, 30000);
+</script>
+</body>
+</html>

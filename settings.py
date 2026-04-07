@@ -74,6 +74,10 @@ def get_max_tokens() -> int:
     return load_settings()["max_tokens"]
 
 
+def get_server_url() -> str:
+    return load_settings().get("server_url", "http://localhost:7890")
+
+
 def reset_settings() -> None:
     """Reset settings cache (useful for testing)."""
     global _settings

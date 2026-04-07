@@ -22,6 +22,8 @@ class Module:
 class PipelineContext:
     project_path: str
     project_name: str
+    run_id: str = ""
+    server_url: str = "http://localhost:7890"
     provider: str = "anthropic"
     lite_model: str = "deepseek-chat"
     pro_model: str = "deepseek-chat"

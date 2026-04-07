@@ -1,6 +1,7 @@
 """Stage 5: 子模块深度研究 - 并行 ReAct agent × N 模块 + 评估迭代."""
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 from base.types import EventType, SystemMessage, UserMessage
@@ -9,9 +10,18 @@ from pipeline.types import PipelineContext, Module
 from prompt.pipeline_prompts import SUB_AGENT_SYSTEM, SUB_AGENT_USER, EVAL_AGENT_SYSTEM, EVAL_AGENT_USER
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
 from provider.llm import call_llm, extract_json
+from monitor.event_bus import get_event_bus
+from monitor.events import PipelineEvent, PipelineEventType
 
 
 def research_modules(ctx: PipelineContext, report_dir: str) -> None:
+    bus = get_event_bus(server_url=ctx.server_url)
+    def pub(et, stage, data, step=1):
+        if ctx.run_id:
+            bus.publish(PipelineEvent.new(run_id=ctx.run_id, event_type=et, stage=stage, data=data, step=step))
+
+    pub(PipelineEventType.STAGE_START, "researcher", {"stage_index": 5})
+
     settings = ctx.settings
     parallel = settings.get("parallel_research", True)
     max_eval_rounds = settings.get("max_eval_rounds", 3)
@@ -19,6 +29,10 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
     total = len(ctx.selected_modules)
+
+    # Attach pub to ctx so sub-functions can use it
+    ctx._event_bus = bus
+    ctx._pub = pub
 
     if parallel and total > 1:
         print(f"  并行研究 {total} 个模块（最多 {max_eval_rounds} 轮评估）", flush=True)
@@ -47,9 +61,21 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
         for module in ctx.selected_modules:
             _research_single_module(ctx, module, tools, max_eval_rounds, report_dir, verbose=True)
 
+    pub(PipelineEventType.STAGE_END, "researcher", {
+        "output_summary": f"researched {total} modules"
+    })
+
 
 def _research_single_module(ctx: PipelineContext, module: Module, tools: list, max_eval_rounds: int, report_dir: str, verbose: bool = True) -> None:
+    pub = getattr(ctx, '_pub', None)
+    run_id = ctx.run_id
+
+    def do_pub(et, stage, data, step=1):
+        if pub and run_id:
+            pub(et, stage, data, step)
+
     tag = f"[{module.name}]"
+    do_pub(PipelineEventType.STAGE_START, "researcher", {"stage_index": 5, "module_name": module.name}, step=1)
     _print(verbose, f"  {tag} 开始研究 ({len(module.files)} 个文件)")
 
     # === 阶段 1：多轮生成 + 评估反馈 ===
@@ -93,6 +119,15 @@ def _research_single_module(ctx: PipelineContext, module: Module, tools: list, m
     _write_module_report(report_dir, module)
     print(f"  {tag} 报告已保存", flush=True)
 
+    do_pub(PipelineEventType.STAGE_RESEARCH_COMPLETE, "researcher", {
+        "module_name": module.name,
+        "report_len": len(module.research_report) if module.research_report else 0,
+    })
+    do_pub(PipelineEventType.STAGE_END, "researcher", {
+        "module_name": module.name,
+        "output_summary": f"module {module.name} research complete, report {len(module.research_report) if module.research_report else 0} chars"
+    })
+
 
 def _build_generate_messages(ctx: PipelineContext, module: Module, round_num: int) -> list:
     system_prompt = SUB_AGENT_SYSTEM.format(module_name=module.name, project_name=ctx.project_name, module_description=module.description, module_files="\n".join(f"  - {f}" for f in module.files))
@@ -119,12 +154,27 @@ def _build_final_messages(ctx: PipelineContext, module: Module) -> list:
 
 
 def _evaluate_report(ctx: PipelineContext, module: Module, report: str) -> dict:
+    pub = getattr(ctx, '_pub', None)
+    run_id = ctx.run_id
+    def do_pub(et, stage, data, step=1):
+        if pub and run_id:
+            pub(et, stage, data, step)
+
     system_prompt = EVAL_AGENT_SYSTEM.format(project_name=ctx.project_name, module_name=module.name, module_description=module.description, module_files="\n".join(f"  - {f}" for f in module.files))
     user_prompt = EVAL_AGENT_USER.format(module_name=module.name, report=report)
 
     print(f"  [{module.name}] 调用评估 LLM...", flush=True)
+    start = time.time()
     response = call_llm(ctx.provider, system_prompt, user_prompt, model=ctx.pro_model)
+    duration_ms = int((time.time() - start) * 1000)
     print(f"  [{module.name}] 评估响应 {len(response)} 字符", flush=True)
+
+    do_pub(PipelineEventType.LLM_CALL, "researcher", {
+        "model": ctx.pro_model,
+        "prompt_preview": f"evaluate module {module.name}",
+        "duration_ms": duration_ms,
+        "response_len": len(response),
+    })
 
     try:
         result = json.loads(extract_json(response))

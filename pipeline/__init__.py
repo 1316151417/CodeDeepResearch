@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 
 from settings import load_settings, get_lite_model, get_pro_model, get_max_model
@@ -9,11 +10,14 @@ from pipeline.decomposer import decompose_into_modules
 from pipeline.scorer import score_and_rank_modules
 from pipeline.researcher import research_modules
 from pipeline.aggregator import aggregate_reports
+from monitor.event_bus import get_event_bus
+from monitor.events import PipelineEvent, PipelineEventType
 
 
 def run_pipeline(
     project_path: str,
     settings_path: str | None = None,
+    monitor: bool = False,
 ) -> str:
     # 加载配置
     settings = load_settings(settings_path)
@@ -27,12 +31,18 @@ def run_pipeline(
     lite_model = get_lite_model()
     pro_model = get_pro_model()
     max_model = get_max_model()
+    server_url = settings.get("server_url", "http://localhost:7890")
 
     print(f"模型配置: lite={lite_model}, pro={pro_model}, max={max_model}")
+
+    # 生成 run_id
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + "_" + uuid.uuid4().hex[:8]
 
     ctx = PipelineContext(
         project_path=project_path,
         project_name=project_name,
+        run_id=run_id,
+        server_url=server_url,
         provider=provider,
         lite_model=lite_model,
         pro_model=pro_model,
@@ -41,6 +51,42 @@ def run_pipeline(
         max_sub_agent_steps=max_sub_agent_steps,
         settings=settings,
     )
+
+    # 初始化事件总线
+    bus = None
+    if monitor:
+        try:
+            bus = get_event_bus(server_url=server_url)
+            # 通知 server 新 run 开始
+            import requests
+            requests.post(
+                f"{server_url}/api/runs/start",
+                json={"run_id": run_id, "metadata": {
+                    "project_path": project_path,
+                    "project_name": project_name,
+                    "provider": provider,
+                    "models": {"lite": lite_model, "pro": pro_model, "max": max_model},
+                }},
+                timeout=2,
+            )
+            print(f"  [monitor] Connected to dashboard at {server_url}")
+        except Exception as e:
+            print(f"  [monitor] Could not connect to dashboard: {e}")
+            bus = None
+
+    # 发布 PIPELINE_START
+    if bus:
+        bus.publish(PipelineEvent.new(
+            run_id=run_id,
+            event_type=PipelineEventType.PIPELINE_START,
+            stage=None,
+            data={
+                "project_path": project_path,
+                "project_name": project_name,
+                "provider": provider,
+                "models": {"lite": lite_model, "pro": pro_model, "max": max_model},
+            }
+        ))
 
     # 创建报告目录: /report/{项目名}/{时间戳}/
     timestamp = datetime.now().strftime("%Y%m%d%H%M")
@@ -105,4 +151,37 @@ def run_pipeline(
     print(f"分析完成！共生成 {len(ctx.selected_modules)} 份模块报告 + 1 份最终报告")
     print(f"报告目录: {report_dir}")
     print(f"{'='*60}")
+
+    # 发布 PIPELINE_END
+    if bus:
+        import requests
+        bus.publish(PipelineEvent.new(
+            run_id=run_id,
+            event_type=PipelineEventType.PIPELINE_END,
+            stage=None,
+            data={
+                "final_report_len": len(ctx.final_report) if ctx.final_report else 0,
+                "selected_module_count": len(ctx.selected_modules),
+                "status": "completed",
+            }
+        ))
+        try:
+            requests.post(
+                f"{server_url}/api/runs/{run_id}/finish",
+                json={
+                    "status": "completed",
+                    "summary": {
+                        "all_files_count": len(ctx.all_files),
+                        "filtered_files_count": len(ctx.filtered_files),
+                        "important_files_count": len(ctx.important_files),
+                        "module_count": len(ctx.modules),
+                        "selected_module_count": len(ctx.selected_modules),
+                        "final_report_len": len(ctx.final_report) if ctx.final_report else 0,
+                    }
+                },
+                timeout=2,
+            )
+        except Exception:
+            pass
+
     return ctx.final_report

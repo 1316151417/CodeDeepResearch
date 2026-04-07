@@ -1,5 +1,6 @@
 """Stage 6: 最终报告汇总 - ReAct agent 整合所有模块报告."""
 import json
+import time
 
 from base.types import EventType, SystemMessage, UserMessage
 from agent.react_agent import stream as react_stream
@@ -7,9 +8,18 @@ from pipeline.types import PipelineContext
 from prompt.pipeline_prompts import AGGREGATOR_SYSTEM, AGGREGATOR_USER, AGGREGATOR_EVAL_SYSTEM, AGGREGATOR_EVAL_USER
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
 from provider.llm import call_llm, extract_json
+from monitor.event_bus import get_event_bus
+from monitor.events import PipelineEvent, PipelineEventType
 
 
 def aggregate_reports(ctx: PipelineContext) -> None:
+    bus = get_event_bus(server_url=ctx.server_url)
+    def pub(et, stage, data, step=1):
+        if ctx.run_id:
+            bus.publish(PipelineEvent.new(run_id=ctx.run_id, event_type=et, stage=stage, data=data, step=step))
+
+    pub(PipelineEventType.STAGE_START, "aggregator", {"stage_index": 6})
+
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
 
@@ -73,6 +83,13 @@ def aggregate_reports(ctx: PipelineContext) -> None:
     else:
         ctx.final_report = "# 错误：未能生成报告"
 
+    pub(PipelineEventType.STAGE_AGGREGATE_COMPLETE, "aggregator", {
+        "report_len": len(ctx.final_report) if ctx.final_report else 0,
+    })
+    pub(PipelineEventType.STAGE_END, "aggregator", {
+        "output_summary": f"aggregator complete, final report {len(ctx.final_report) if ctx.final_report else 0} chars"
+    })
+
 
 def _collect_step_contents(events) -> dict:
     step_contents = {}
@@ -90,12 +107,26 @@ def _collect_step_contents(events) -> dict:
 
 
 def _evaluate_aggregator_report(ctx: PipelineContext, report: str) -> dict:
+    bus = get_event_bus(server_url=ctx.server_url)
+    def pub(et, stage, data, step=1):
+        if ctx.run_id:
+            bus.publish(PipelineEvent.new(run_id=ctx.run_id, event_type=et, stage=stage, data=data, step=step))
+
     system_prompt = AGGREGATOR_EVAL_SYSTEM.format(project_name=ctx.project_name)
     user_prompt = AGGREGATOR_EVAL_USER.format(project_name=ctx.project_name, report=report)
 
     print(f"  [汇总评估] 调用评估 LLM...", flush=True)
+    start = time.time()
     response = call_llm(ctx.provider, system_prompt, user_prompt, model=ctx.max_model)
+    duration_ms = int((time.time() - start) * 1000)
     print(f"  [汇总评估] 评估响应 {len(response)} 字符", flush=True)
+
+    pub(PipelineEventType.LLM_CALL, "aggregator", {
+        "model": ctx.max_model,
+        "prompt_preview": "evaluate aggregator report",
+        "duration_ms": duration_ms,
+        "response_len": len(response),
+    })
 
     try:
         result = json.loads(extract_json(response))

@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 
 from pipeline.types import PipelineContext, FileInfo
+from monitor.event_bus import get_event_bus
+from monitor.events import PipelineEvent, PipelineEventType
 
 # ====== 排除目录 ======
 EXCLUDE_DIRS = {
@@ -140,6 +142,12 @@ TEXT_EXTENSIONS = {
 
 
 def scan_project(ctx: PipelineContext) -> None:
+    bus = get_event_bus(server_url=ctx.server_url)
+    _publish = lambda et, stage, data, step=1: bus.publish(
+        PipelineEvent.new(run_id=ctx.run_id, event_type=et, stage=stage, data=data, step=step)
+    ) if ctx.run_id else None
+
+    _publish(PipelineEventType.STAGE_START, "scanner", {"stage_index": 1})
     root = Path(ctx.project_path)
 
     all_files = []
@@ -173,6 +181,15 @@ def scan_project(ctx: PipelineContext) -> None:
     ctx.all_files = all_files
     ctx.tree_text = _build_tree_text(ctx.project_name, all_files)
     ctx.filtered_files = [f for f in all_files if _is_important_file(f)]
+
+    _publish(PipelineEventType.STAGE_SCAN_COMPLETE, "scanner", {
+        "all_files_count": len(ctx.all_files),
+        "filtered_files_count": len(ctx.filtered_files),
+        "excluded_count": len(ctx.all_files) - len(ctx.filtered_files),
+    })
+    _publish(PipelineEventType.STAGE_END, "scanner", {
+        "output_summary": f"{len(ctx.all_files)} files total, {len(ctx.filtered_files)} after basic filter"
+    })
 
 
 def _build_tree_text(project_name: str, files: list[FileInfo]) -> str:
