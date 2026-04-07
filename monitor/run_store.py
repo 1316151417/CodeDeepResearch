@@ -107,7 +107,10 @@ class RunStore:
     # ─── Flask-side read API ────────────────────────────────────────────
 
     def get_run(self, run_id: str) -> dict | None:
-        """Load a specific run from disk."""
+        """Load a specific run (from memory if in-progress, else from disk)."""
+        # Check in-memory current run first
+        if self._current_run is not None and self._current_run["run_id"] == run_id:
+            return dict(self._current_run)
         run_path = self._base / f"{run_id}.json"
         if not run_path.exists():
             return None
@@ -115,9 +118,23 @@ class RunStore:
             return json.load(f)
 
     def list_runs(self, limit: int = 20) -> list[dict]:
-        """Return recent runs from index (newest first)."""
+        """Return recent runs from index (newest first), including in-progress run."""
         index = self._load_index()
-        return index["runs"][:limit]
+        runs = list(index["runs"][:limit])
+        # Include current in-progress run if not already in index
+        if self._current_run is not None:
+            cur_id = self._current_run["run_id"]
+            if not any(r.get("run_id") == cur_id for r in runs):
+                runs.insert(0, {
+                    "run_id": cur_id,
+                    "project_name": self._current_run.get("project_name", ""),
+                    "project_path": self._current_run.get("project_path", ""),
+                    "status": "running",
+                    "started_at": self._current_run.get("started_at", ""),
+                    "ended_at": None,
+                    "total_duration_s": None,
+                })
+        return runs[:limit]
 
     def get_run_events(self, run_id: str) -> list[dict]:
         """Load events for a specific run."""

@@ -77,6 +77,7 @@ a:hover { text-decoration: underline; }
 .stage-status.completed { background: #3fb95022; color: var(--green); }
 .stage-status.error { background: #f8514922; color: var(--red); }
 .stage-time { font-size: 11px; color: var(--muted); margin-left: auto; }
+.stage-count { font-size: 10px; color: var(--muted); margin-left: 4px; background: var(--surface2); padding: 0 5px; border-radius: 8px; }
 
 /* Layer 2: Sub-nodes */
 .sub-node { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; overflow: hidden; margin-left: 8px; }
@@ -180,6 +181,7 @@ let currentRunId = null;
 let runs = [];
 let expandedNodes = new Set();
 let renderPending = false;
+let lastRenderedCounts = {};  // key -> event count at last render
 
 const STAGE_ORDER = ['scanner', 'llm_filter', 'decomposer', 'scorer', 'researcher', 'aggregator'];
 const STAGE_META = {
@@ -196,6 +198,7 @@ let pipelineTree = { stages: {} };
 
 function initTree() {
   pipelineTree = { stages: {} };
+  lastRenderedCounts = {};
   for (const s of STAGE_ORDER) {
     pipelineTree.stages[s] = {
       label: STAGE_META[s].label,
@@ -216,9 +219,36 @@ let reconnectTimer = null;
 
 function connectSSE() {
   es = new EventSource('/sse');
-  es.onopen = () => setConn(true);
+  es.onopen = () => { setConn(true); replayActiveRun(); };
   es.onerror = () => { setConn(false); es.close(); reconnectTimer = setTimeout(connectSSE, 3000); };
   es.onmessage = e => { try { handleEvent(JSON.parse(e.data)); } catch {} };
+}
+
+async function replayActiveRun() {
+  // On SSE connect, check for a running/recent run and replay its events
+  try {
+    const runs = await fetch('/api/runs').then(r => r.json());
+    if (!runs || !runs.length) return;
+    const latest = runs[0];
+    if (!latest || latest.status !== 'running') return;
+    // Fetch full run data with events
+    const run = await fetch('/api/runs/' + latest.run_id).then(r => r.json());
+    if (!run || !run.events || !run.events.length) return;
+
+    // Only replay if we don't have data already (avoid duplicates for early stages)
+    const hasStageData = Object.values(pipelineTree.stages).some(s => s.events.length > 0 || Object.keys(s.subNodes).length > 0);
+    if (hasStageData) return;
+
+    currentRunId = latest.run_id;
+    document.getElementById('stat-run').textContent = latest.project_name || latest.run_id;
+    initTree();
+    showTree();
+
+    for (const ev of run.events) {
+      routeEvent(ev);
+    }
+    renderTree();
+  } catch {}
 }
 
 function setConn(live) {
@@ -322,8 +352,130 @@ function scheduleRender() {
     renderPending = true;
     requestAnimationFrame(() => {
       renderPending = false;
-      renderTree();
+      incrementalUpdate();
     });
+  }
+}
+
+function incrementalUpdate() {
+  // Check if structure changed (new stages, new sub-nodes) → full rebuild
+  // Otherwise, just append new events to expanded bodies
+  const needsFullRebuild = checkNeedsRebuild();
+  if (needsFullRebuild) {
+    lastRenderedCounts = {};
+    renderTree();
+    return;
+  }
+
+  // Incremental: update headers (status/time) + append new events to expanded bodies
+  updateHeaders();
+  appendNewEvents();
+}
+
+function checkNeedsRebuild() {
+  for (const stageName of STAGE_ORDER) {
+    const stage = pipelineTree.stages[stageName];
+    if (!stage) continue;
+    // New sub-nodes? → rebuild
+    const subCount = Object.keys(stage.subNodes).length;
+    const prevSubCount = lastRenderedCounts['subs:' + stageName] || 0;
+    if (subCount !== prevSubCount) return true;
+  }
+  // First render ever?
+  if (Object.keys(lastRenderedCounts).length === 0) return true;
+  return false;
+}
+
+function updateHeaders() {
+  for (const stageName of STAGE_ORDER) {
+    const stage = pipelineTree.stages[stageName];
+    if (!stage) continue;
+    const el = document.querySelector(`.stage-node[data-stage="${stageName}"] .stage-header`);
+    if (!el) continue;
+
+    // Update status badge
+    const statusEl = el.querySelector('.stage-status');
+    if (statusEl) {
+      statusEl.className = 'stage-status ' + stage.status;
+      statusEl.textContent = statusText(stage.status);
+    }
+    // Update count
+    const countEl = el.querySelector('.stage-count');
+    if (countEl) {
+      const total = stage.events.length + Object.values(stage.subNodes).reduce((s,n)=>s+n.events.length, 0);
+      countEl.textContent = total;
+    }
+    // Update time
+    const timeEl = el.querySelector('.stage-time');
+    if (timeEl && stage.startTime) {
+      timeEl.textContent = formatDuration(stage.startTime, stage.endTime);
+    }
+
+    // Update sub-node headers
+    for (const [subId, sub] of Object.entries(stage.subNodes)) {
+      const subEl = document.querySelector(`.sub-node .sub-status`);
+      // More targeted: find sub-node by its subKey
+    }
+  }
+}
+
+function appendNewEvents() {
+  for (const stageName of STAGE_ORDER) {
+    const stage = pipelineTree.stages[stageName];
+    if (!stage) continue;
+    const stageKey = 'stage:' + stageName;
+    const stageBody = document.querySelector(`.stage-body[data-key="${stageKey}"]`);
+
+    // Append new stage-level events if stage body is expanded and rendered
+    if (stageBody && expandedNodes.has(stageKey)) {
+      const prevCount = lastRenderedCounts[stageKey] || 0;
+      if (stage.events.length > prevCount) {
+        // If body was empty, need full render of the body
+        if (!stageBody.innerHTML.trim()) {
+          stageBody.innerHTML = renderStageBody(stageName, stage);
+        } else {
+          const newEvents = stage.events.slice(prevCount);
+          const container = stageBody;
+          // Append before any sub-nodes? Actually stage events come first, then sub-nodes.
+          // Simpler: just re-render the body
+          stageBody.innerHTML = renderStageBody(stageName, stage);
+        }
+        lastRenderedCounts[stageKey] = stage.events.length;
+      }
+    }
+
+    // Sub-nodes
+    for (const [subId, sub] of Object.entries(stage.subNodes)) {
+      const subKey = 'sub:' + stageName + ':' + subId;
+      const subBody = document.querySelector(`.sub-body[data-key="${subKey}"]`);
+      const prevCount = lastRenderedCounts[subKey] || 0;
+      if (sub.events.length > prevCount) {
+        // Update sub-node header
+        const subNodeEl = subBody ? subBody.closest('.sub-node') : null;
+        if (subNodeEl) {
+          const statusEl = subNodeEl.querySelector('.sub-status');
+          if (statusEl) {
+            statusEl.className = 'sub-status ' + sub.status;
+            statusEl.textContent = statusText(sub.status);
+          }
+          const countEl = subNodeEl.querySelector('[style*="margin-left:4px"]');
+          if (countEl) countEl.textContent = sub.events.length;
+        }
+        if (subBody && expandedNodes.has(subKey)) {
+          if (!subBody.innerHTML.trim()) {
+            subBody.innerHTML = renderEventList(sub.events);
+          } else {
+            // Append only new events
+            const newEvents = sub.events.slice(prevCount);
+            for (const ev of newEvents) {
+              subBody.insertAdjacentHTML('beforeend', renderDetailCard(ev));
+            }
+          }
+        }
+        lastRenderedCounts[subKey] = sub.events.length;
+      }
+      lastRenderedCounts['subs:' + stageName] = Object.keys(stage.subNodes).length;
+    }
   }
 }
 
@@ -335,7 +487,6 @@ function renderTree() {
     const stage = pipelineTree.stages[stageName];
     if (!stage) continue;
     const hasSubs = Object.keys(stage.subNodes).length > 0;
-    const hasContent = hasSubs || stage.events.length > 0;
     const expandKey = 'stage:' + stageName;
     const isOpen = expandedNodes.has(expandKey);
 
@@ -345,44 +496,68 @@ function renderTree() {
     html += `<span class="stage-icon">${stage.icon}</span>`;
     html += `<span class="stage-label">${esc(stage.label)}</span>`;
     html += `<span class="stage-status ${stage.status}">${statusText(stage.status)}</span>`;
+    html += `<span class="stage-count">${stage.events.length + Object.values(stage.subNodes).reduce((s,n)=>s+n.events.length,0)}</span>`;
     if (stage.startTime) {
       html += `<span class="stage-time">${formatDuration(stage.startTime, stage.endTime)}</span>`;
     }
-    html += `</div>`; // close stage-header
+    html += `</div>`;
 
-    html += `<div class="stage-body" style="display:${isOpen ? 'block' : 'none'}">`;
-
-    if (hasSubs) {
-      // Layer 2: sub-nodes
-      for (const [subId, sub] of Object.entries(stage.subNodes)) {
-        const subKey = 'sub:' + stageName + ':' + subId;
-        const subOpen = expandedNodes.has(subKey);
-        html += `<div class="sub-node">`;
-        html += `<div class="sub-header" onclick="toggleNode('${subKey}', this)">`;
-        html += `<span class="sub-toggle ${subOpen ? 'open' : ''}">▶</span>`;
-        html += `<span class="sub-label">${esc(sub.label)}</span>`;
-        html += `<span class="sub-status ${sub.status}">${statusText(sub.status)}</span>`;
-        if (sub.startTime) {
-          html += `<span style="font-size:11px;color:var(--muted);margin-left:auto">${formatDuration(sub.startTime, sub.endTime)}</span>`;
-        }
-        html += `</div>`; // close sub-header
-        html += `<div class="sub-body" style="display:${subOpen ? 'block' : 'none'}">`;
-        html += renderEventList(sub.events);
-        html += `</div></div>`; // close sub-body, sub-node
-      }
+    // Lazy body: only render content for expanded nodes
+    html += `<div class="stage-body" data-key="${expandKey}" style="display:${isOpen ? 'block' : 'none'}">`;
+    if (isOpen) {
+      html += renderStageBody(stageName, stage);
     }
-
-    // Stage-level events (not in sub-nodes)
-    if (stage.events.length > 0) {
-      html += renderEventList(stage.events);
-    } else if (!hasSubs) {
-      html += `<div class="empty-hint">等待数据...</div>`;
-    }
-
-    html += `</div></div>`; // close stage-body, stage-node
+    html += `</div></div>`;
   }
 
   container.innerHTML = html;
+
+  // Track rendered counts for incremental updates
+  for (const stageName of STAGE_ORDER) {
+    const stage = pipelineTree.stages[stageName];
+    if (!stage) continue;
+    lastRenderedCounts['stage:' + stageName] = stage.events.length;
+    lastRenderedCounts['subs:' + stageName] = Object.keys(stage.subNodes).length;
+    for (const [subId, sub] of Object.entries(stage.subNodes)) {
+      lastRenderedCounts['sub:' + stageName + ':' + subId] = sub.events.length;
+    }
+  }
+}
+
+function renderStageBody(stageName, stage) {
+  let html = '';
+  const hasSubs = Object.keys(stage.subNodes).length > 0;
+
+  if (hasSubs) {
+    for (const [subId, sub] of Object.entries(stage.subNodes)) {
+      const subKey = 'sub:' + stageName + ':' + subId;
+      const subOpen = expandedNodes.has(subKey);
+      html += `<div class="sub-node">`;
+      html += `<div class="sub-header" onclick="toggleNode('${subKey}', this)">`;
+      html += `<span class="sub-toggle ${subOpen ? 'open' : ''}">▶</span>`;
+      html += `<span class="sub-label">${esc(sub.label)}</span>`;
+      html += `<span class="sub-status ${sub.status}">${statusText(sub.status)}</span>`;
+      html += `<span style="font-size:11px;color:var(--muted);margin-left:4px">${sub.events.length}</span>`;
+      if (sub.startTime) {
+        html += `<span style="font-size:11px;color:var(--muted);margin-left:auto">${formatDuration(sub.startTime, sub.endTime)}</span>`;
+      }
+      html += `</div>`;
+      // Lazy sub-body
+      html += `<div class="sub-body" data-key="${subKey}" style="display:${subOpen ? 'block' : 'none'}">`;
+      if (subOpen) {
+        html += renderEventList(sub.events);
+      }
+      html += `</div></div>`;
+    }
+  }
+
+  if (stage.events.length > 0) {
+    html += renderEventList(stage.events);
+  } else if (!hasSubs) {
+    html += `<div class="empty-hint">等待数据...</div>`;
+  }
+
+  return html;
 }
 
 function renderEventList(events) {
@@ -659,6 +834,23 @@ function toggleNode(key, headerEl) {
     expandedNodes.add(key);
     body.style.display = 'block';
     if (toggle) toggle.classList.add('open');
+    // Lazy-render: fill body content on first expand
+    lazyFillBody(key, body);
+  }
+}
+
+function lazyFillBody(key, bodyEl) {
+  // Only fill if body is empty (hasn't been rendered yet)
+  if (bodyEl.innerHTML.trim()) return;
+  if (key.startsWith('stage:')) {
+    const stageName = key.slice(6);
+    const stage = pipelineTree.stages[stageName];
+    if (stage) bodyEl.innerHTML = renderStageBody(stageName, stage);
+  } else if (key.startsWith('sub:')) {
+    const parts = key.split(':'); // sub:stageName:subId
+    const stage = pipelineTree.stages[parts[1]];
+    const sub = stage && stage.subNodes[parts.slice(2).join(':')];
+    if (sub) bodyEl.innerHTML = renderEventList(sub.events);
   }
 }
 
@@ -726,6 +918,19 @@ initTree();
 showTree();
 loadRuns();
 setInterval(loadRuns, 15000);
+// Update running timers every second
+setInterval(() => {
+  const times = document.querySelectorAll('.stage-time');
+  times.forEach(el => {
+    const header = el.closest('.stage-node');
+    if (!header) return;
+    const stageName = header.dataset.stage;
+    const stage = pipelineTree.stages[stageName];
+    if (stage && stage.status === 'running' && stage.startTime) {
+      el.textContent = formatDuration(stage.startTime, null);
+    }
+  });
+}, 1000);
 </script>
 </body>
 </html>
