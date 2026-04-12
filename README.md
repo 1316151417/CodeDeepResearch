@@ -66,10 +66,7 @@ uv sync
   "pro_model": "deepseek-reasoner",
   "max_model": "deepseek-reasoner",
   "max_tokens": 16384,
-  "max_sub_agents": 6,
-  "max_sub_agent_steps": 30,
-  "max_eval_rounds": 1,
-  "parallel_research": true
+  "max_sub_agent_steps": 30
 }
 ```
 
@@ -79,10 +76,7 @@ uv sync
 | `lite_model` | 分类/过滤/打分用（速度快） |
 | `pro_model` | 子模块深度分析 + 评估用（推理能力强） |
 | `max_model` | 最终汇总用（最强推理） |
-| `max_sub_agents` | 并行研究的模块数量上限 |
 | `max_sub_agent_steps` | 每个 agent 的最大步数 |
-| `max_eval_rounds` | 评估迭代轮数（默认 1） |
-| `parallel_research` | 是否并行研究模块 |
 
 ### 运行
 

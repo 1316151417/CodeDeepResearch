@@ -82,7 +82,7 @@ if __name__ == "__main__":
         provider="anthropic",
         pro_model="deepseek-chat",
         max_model="deepseek-chat",
-        max_sub_agent_steps=20,
+        max_sub_agent_steps=30,
         all_files=[],
         modules=[],
         settings={},

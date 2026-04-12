@@ -10,10 +10,7 @@ _DEFAULTS = {
     "pro_model": "deepseek-chat",
     "max_model": "deepseek-reasoner",
     "max_tokens": 16384,
-    "max_sub_agents": 5,
-    "max_sub_agent_steps": 15,
-    "max_eval_rounds": 3,
-    "parallel_research": True,
+    "max_sub_agent_steps": 30,
 }
 
 _settings = None

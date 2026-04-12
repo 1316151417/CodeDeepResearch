@@ -26,7 +26,6 @@ class PipelineContext:
     lite_model: str = "deepseek-chat"
     pro_model: str = "deepseek-chat"
     max_model: str = "deepseek-reasoner"
-    max_sub_agents: int = 5
     max_sub_agent_steps: int = 30
     settings: dict = field(default_factory=dict)
 

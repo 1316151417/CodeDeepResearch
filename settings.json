@@ -4,8 +4,5 @@
   "pro_model": "deepseek-chat",
   "max_model": "deepseek-reasoner",
   "max_tokens": 16384,
-  "max_sub_agents": 6,
-  "max_sub_agent_steps": 30,
-  "max_eval_rounds": 3,
-  "parallel_research": true
+  "max_sub_agent_steps": 30
 }
