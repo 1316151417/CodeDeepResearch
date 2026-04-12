@@ -11,6 +11,8 @@ _DEFAULTS = {
     "max_model": "deepseek-reasoner",
     "max_tokens": 16384,
     "max_sub_agent_steps": 30,
+    "research_parallel": False,
+    "research_threads": 4,
 }
 
 _settings = None

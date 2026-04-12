@@ -23,6 +23,8 @@ def run_pipeline(
 
     provider = settings["provider"]
     max_sub_agent_steps = settings["max_sub_agent_steps"]
+    research_parallel = settings["research_parallel"]
+    research_threads = settings["research_threads"]
     lite_model = get_lite_model()
     pro_model = get_pro_model()
     max_model = get_max_model()
@@ -37,6 +39,8 @@ def run_pipeline(
         pro_model=pro_model,
         max_model=max_model,
         max_sub_agent_steps=max_sub_agent_steps,
+        research_parallel=research_parallel,
+        research_threads=research_threads,
         settings=settings,
     )
 

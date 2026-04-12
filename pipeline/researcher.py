@@ -1,6 +1,7 @@
 """Stage 5: 子模块深度研究 - ReAct agent 研究模块并生成报告."""
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from base.types import EventType, SystemMessage, UserMessage
@@ -15,8 +16,24 @@ def research_modules(ctx: PipelineContext, report_dir: str, selected: list[Modul
     tools = [read_file, list_directory, glob_pattern, grep_content]
     file_tree = _build_file_tree(ctx.all_files)
 
-    for module in selected:
-        _research_one(ctx, module, tools, report_dir, file_tree)
+    if ctx.research_parallel:
+        print(f"  并行模式: {ctx.research_threads} 线程, {len(selected)} 个模块")
+        with ThreadPoolExecutor(max_workers=ctx.research_threads) as executor:
+            futures = {
+                executor.submit(_research_one, ctx, module, tools, report_dir, file_tree): module
+                for module in selected
+            }
+            for future in as_completed(futures):
+                module = futures[future]
+                try:
+                    future.result()
+                    print(f"  ✓ 模块完成: {module.name}")
+                except Exception as e:
+                    print(f"  ✗ 模块失败: {module.name} - {e}")
+    else:
+        print(f"  串行模式: {len(selected)} 个模块")
+        for module in selected:
+            _research_one(ctx, module, tools, report_dir, file_tree)
 
 
 def _build_file_tree(files) -> str:
