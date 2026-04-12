@@ -70,7 +70,10 @@ def _execute_tool(tool, tool_arguments: str):
 
 def stream(messages, tools, provider="anthropic", model=None, max_steps=MAX_STEP_CNT):
     """ReAct stream generator: yields events for each step."""
-    logger.debug(f"[ReAct] 开始 (provider={provider}, model={model}, max_steps={max_steps})", tools=tools)
+    logger.debug(f"[ReAct] 开始 (provider={provider}, model={model}, max_steps={max_steps})")
+    for msg in messages:
+        logger.debug(f"[ReAct] 消息: {msg}")
+    logger.debug(f"[ReAct] 工具定义: {[t.name for t in tools]}")
 
     adaptor = LLMAdaptor(provider=provider)
     react_finished = False
@@ -108,7 +111,7 @@ def stream(messages, tools, provider="anthropic", model=None, max_steps=MAX_STEP
                         logger.debug(event.content, end="")
                 elif event.type == EventType.TOOL_CALL:
                     raw_tool_calls.append(event.raw)
-                    logger.debug(f"[ReAct] 调用工具: {event.tool_name}({event.tool_arguments[:80] if event.tool_arguments else ''}...)")
+                    logger.debug(f"\n[ReAct] 调用工具: {event.tool_name}({event.tool_arguments[:80] if event.tool_arguments else ''}...)")
                     tool = next((t for t in tools if t.name == event.tool_name), None)
                     if tool is None:
                         tool_results[event.tool_id] = {"result": None, "error": f"Tool '{event.tool_name}' not found"}

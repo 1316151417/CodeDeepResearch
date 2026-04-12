@@ -27,7 +27,7 @@ class PipelineContext:
     pro_model: str = "deepseek-chat"
     max_model: str = "deepseek-reasoner"
     max_sub_agents: int = 5
-    max_sub_agent_steps: int = 15
+    max_sub_agent_steps: int = 30
     settings: dict = field(default_factory=dict)
 
     # Stage 1: scanner output
