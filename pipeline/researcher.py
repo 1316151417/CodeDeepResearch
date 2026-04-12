@@ -50,11 +50,11 @@ def _render_tree(node: dict, lines: list, prefix: str) -> None:
 def _research_one(ctx: PipelineContext, module: Module, tools: list, report_dir: str, file_tree: str) -> None:
     set_project_root(ctx.project_path)
 
-    module_files_json = json.dumps([{"path": f, "type": _get_file_type(f)} for f in module.files], ensure_ascii=False, indent=2)
+    module_files_json = json.dumps([f for f in module.files], ensure_ascii=False, indent=2)
 
     system = SUB_AGENT_SYSTEM.format(
-        module_name=module.name,
         project_name=ctx.project_name,
+        module_name=module.name,
         module_description=module.description,
         file_tree=file_tree,
         module_files_json=module_files_json,
