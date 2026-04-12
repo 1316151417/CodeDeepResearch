@@ -1,178 +1,62 @@
-"""Stage 5: 子模块深度研究 - 并行 ReAct agent × N 模块 + 评估迭代."""
-import json
+"""Stage 5: 子模块深度研究 - ReAct agent 研究模块并生成报告."""
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
 from base.types import EventType, SystemMessage, UserMessage
 from agent.react_agent import stream as react_stream
 from pipeline.types import PipelineContext, Module
-from prompt.pipeline_prompts import SUB_AGENT_SYSTEM, SUB_AGENT_USER, EVAL_AGENT_SYSTEM, EVAL_AGENT_USER
+from prompt.pipeline_prompts import SUB_AGENT_SYSTEM, SUB_AGENT_USER
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
-from provider.llm import call_llm, extract_json
 
 
 def research_modules(ctx: PipelineContext, report_dir: str, selected: list[Module]) -> None:
-    settings = ctx.settings
-    parallel = settings.get("parallel_research", True)
-    max_eval_rounds = settings.get("max_eval_rounds", 3)
-
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
-    total = len(selected)
 
-    if parallel and total > 1:
-        max_workers = settings.get("max_parallel_workers", 8)
-        print(f"  并行研究 {total} 个模块（最多 {max_eval_rounds} 轮评估，{max_workers} 并发）", flush=True)
-        with ThreadPoolExecutor(max_workers=min(total, max_workers)) as executor:
-            futures = {}
-            for module in selected:
-                future = executor.submit(_research_single_module, ctx, module, tools, max_eval_rounds, report_dir, verbose=False)
-                futures[future] = module
-            for future in as_completed(futures):
-                module = futures[future]
-                try:
-                    future.result(timeout=600)
-                    print(f"  ✓ [{module.name}] 完成 ({len(module.research_report)} 字符)", flush=True)
-                except FuturesTimeoutError:
-                    print(f"  ✗ [{module.name}] 研究超时（>600秒），强制跳过", flush=True)
-                    module.research_report = f"# 模块 {module.name} 分析报告\n\n研究超时，未能完成。"
-                    _write_module_report(report_dir, module)
-                except Exception as e:
-                    import traceback
-                    print(f"  ✗ [{module.name}] 失败: {e}", flush=True)
-                    print(f"  ✗ 堆栈: {traceback.format_exc()}", flush=True)
-                    module.research_report = f"# 模块 {module.name} 分析报告\n\n研究过程出错: {e}"
-                    _write_module_report(report_dir, module)
-    else:
-        print(f"  串行研究 {total} 个模块", flush=True)
-        for module in selected:
-            _research_single_module(ctx, module, tools, max_eval_rounds, report_dir, verbose=True)
+    for module in selected:
+        _research_one(ctx, module, tools, report_dir)
 
 
-def _research_single_module(ctx: PipelineContext, module: Module, tools: list, max_eval_rounds: int, report_dir: str, verbose: bool = True) -> None:
-    # Set project root in this thread — ContextVar does NOT propagate via ThreadPoolExecutor
+def _research_one(ctx: PipelineContext, module: Module, tools: list, report_dir: str) -> None:
     set_project_root(ctx.project_path)
 
-    tag = f"[{module.name}]"
-    _print(verbose, f"  {tag} 开始研究 ({len(module.files)} 个文件)")
+    system = SUB_AGENT_SYSTEM.format(
+        module_name=module.name,
+        project_name=ctx.project_name,
+        module_description=module.description,
+        module_files="\n".join(f"  - {f}" for f in module.files),
+    )
+    messages = [SystemMessage(system), UserMessage(SUB_AGENT_USER.format(module_name=module.name))]
 
-    # === 阶段 1：多轮生成 + 评估反馈 ===
-    for round_num in range(1, max_eval_rounds + 1):
-        _print(verbose, f"  {tag} === 第 {round_num}/{max_eval_rounds} 轮 ===")
-        messages = _build_generate_messages(ctx, module, round_num)
+    events = react_stream(messages=messages, tools=tools, provider=ctx.provider, model=ctx.pro_model, max_steps=ctx.max_sub_agent_steps)
 
-        _print(verbose or round_num == 1, f"  {tag} 调用 ReAct agent 生成报告...")
-        events = react_stream(messages=messages, tools=tools, provider=ctx.provider, model=ctx.pro_model, max_steps=ctx.max_sub_agent_steps)
-        report = _collect_agent_output(events, tag, verbose)
-        module.research_report = report
+    module.research_report = _collect_report(events)
 
-        if round_num >= max_eval_rounds:
-            print(f"  {tag} 达到最大轮次，进入最终生成", flush=True)
-            break
-
-        print(f"  {tag} 正在评估报告质量...", flush=True)
-        eval_result = _evaluate_report(ctx, module, report)
-        score = eval_result.get("total_score", "?")
-
-        if eval_result.get("pass", False):
-            print(f"  {tag} 评估通过 (分数: {score})，进入最终生成", flush=True)
-            break
-        else:
-            suggestions = eval_result.get("suggestions", [])
-            print(f"  {tag} 评估未通过 (分数: {score})，改进后重试", flush=True)
-            if verbose:
-                for s in suggestions:
-                    print(f"    → {s}", flush=True)
-
-    # === 阶段 2：最终无工具生成报告 ===
-    _print(verbose, f"  {tag} 构建最终报告（无工具模式）...")
-    final_messages = _build_final_messages(ctx, module)
-    final_messages.append(UserMessage("已收集足够上下文，请立即生成完整的中文分析报告。不再调用任何工具，直接输出报告。"))
-
-    _print(verbose, f"  {tag} 最终生成，无工具模式...")
-    events = react_stream(messages=final_messages, tools=[], provider=ctx.provider, model=ctx.pro_model, max_steps=ctx.max_sub_agent_steps)
-    report = _collect_agent_output(events, tag, verbose)
-    module.research_report = report
-
-    _write_module_report(report_dir, module)
-    print(f"  {tag} 报告已保存", flush=True)
-
-
-def _build_generate_messages(ctx: PipelineContext, module: Module, round_num: int) -> list:
-    system_prompt = SUB_AGENT_SYSTEM.format(module_name=module.name, project_name=ctx.project_name, module_description=module.description, module_files="\n".join(f"  - {f}" for f in module.files))
-    messages = [SystemMessage(system_prompt), UserMessage(SUB_AGENT_USER.format(module_name=module.name))]
-
-    if round_num > 1 and module.research_report:
-        improvement_hints = getattr(module, '_eval_suggestions', [])
-        hints_text = "\n".join(f"  - {s}" for s in improvement_hints) if improvement_hints else "无具体建议"
-        messages.append(UserMessage(f"上一轮评估发现以下不足，请针对性改进：\n{hints_text}\n\n请重新读取相关文件，补充缺失的分析，输出改进后的完整报告。"))
-
-    return messages
-
-
-def _build_final_messages(ctx: PipelineContext, module: Module) -> list:
-    system_prompt = SUB_AGENT_SYSTEM.format(module_name=module.name, project_name=ctx.project_name, module_description=module.description, module_files="\n".join(f"  - {f}" for f in module.files))
-    messages = [SystemMessage(system_prompt), UserMessage(SUB_AGENT_USER.format(module_name=module.name))]
-
-    if module.research_report:
-        suggestions = getattr(module, '_eval_suggestions', [])
-        hints_text = "\n".join(f"  - {s}" for s in suggestions) if suggestions else "无具体建议"
-        messages.append(UserMessage(f"以下是之前的研究结论，可作为参考：\n{module.research_report[:3000]}\n\n评估建议：\n{hints_text}\n\n请综合以上信息，生成最终的完整分析报告。"))
-
-    return messages
-
-
-def _evaluate_report(ctx: PipelineContext, module: Module, report: str) -> dict:
-    system_prompt = EVAL_AGENT_SYSTEM.format(project_name=ctx.project_name, module_name=module.name, module_description=module.description, module_files="\n".join(f"  - {f}" for f in module.files))
-    user_prompt = EVAL_AGENT_USER.format(module_name=module.name, report=report)
-
-    print(f"  [{module.name}] 调用评估 LLM...", flush=True)
-    response = call_llm(ctx.provider, system_prompt, user_prompt, model=ctx.pro_model)
-    print(f"  [{module.name}] 评估响应 {len(response)} 字符", flush=True)
-
-    try:
-        result = json.loads(extract_json(response))
-        print(f"  [{module.name}] 评估解析成功: {result}", flush=True)
-    except json.JSONDecodeError as e:
-        print(f"  [{module.name}] 评估 JSON 解析失败: {e}", flush=True)
-        return {"pass": True, "total_score": 30, "suggestions": []}
-
-    module._eval_suggestions = result.get("suggestions", [])
-    return result
-
-
-def _collect_agent_output(events, tag: str, verbose: bool) -> str:
-    step_contents = {}
-    had_tool_calls = False
-    step_count = 0
-
-    for event in events:
-        if event.type == EventType.STEP_START:
-            had_tool_calls = False
-            step_count += 1
-            if not verbose:
-                print(f"  {tag} 步骤 {step_count}...", flush=True)
-        if event.type == EventType.STEP_END and event.content:
-            step_contents[event.step] = event.content
-        if event.type == EventType.TOOL_CALL:
-            had_tool_calls = True
-            if not verbose:
-                print(f"  {tag}   工具: {event.tool_name}", flush=True)
-
-    if not step_contents:
-        return "（未能生成报告）"
-
-    if not had_tool_calls:
-        return list(step_contents.values())[-1]
-    return max(step_contents.values(), key=len)
-
-
-def _write_module_report(report_dir: str, module: Module) -> None:
     path = os.path.join(report_dir, f"模块分析报告-{module.name}.md")
     with open(path, "w", encoding="utf-8") as f:
         f.write(module.research_report)
 
 
-def _print(verbose: bool, msg: str) -> None:
-    if verbose:
-        print(msg, flush=True)
+def _collect_report(events) -> str:
+    contents = [e.content for e in events if e.type == EventType.STEP_END and e.content]
+    return contents[-1] if contents else "（未能生成报告）"
+
+
+if __name__ == "__main__":
+    from pipeline.scanner import scan_project
+    from pipeline.llm_filter import llm_filter_files
+    from pipeline.decomposer import decompose_into_modules
+    from pipeline.scorer import score_and_rank_modules
+
+    project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ctx = PipelineContext(project_path=project_path, project_name="CodeDeepResearch")
+    scan_project(ctx)
+    llm_filter_files(ctx)
+    decompose_into_modules(ctx)
+    score_and_rank_modules(ctx)
+
+    selected = ctx.modules[:1]
+    report_dir = os.path.join(os.getcwd(), "report", ctx.project_name)
+    os.makedirs(report_dir, exist_ok=True)
+
+    research_modules(ctx, report_dir, selected)
+    print(f"完成：{selected[0].name}")
