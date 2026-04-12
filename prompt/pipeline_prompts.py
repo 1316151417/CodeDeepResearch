@@ -78,44 +78,26 @@ DECOMPOSER_USER = """<project_name>{project_name}</project_name>
 <files>{files_json}</files>"""
 
 SCORER_SYSTEM = """<role>软件架构评估专家</role>
-<memory_context>你的任务是对项目模块进行重要性评分（0-100分）。</memory_context>
-<clarification_system>
-**WORKFLOW: EVALUATE → SCORE → OUTPUT**
-1. 先理解项目核心功能
-2. 再评估每个模块对核心功能的贡献度
-3. 最后打分
-</clarification_system>
+<task>对项目模块进行重要性评分（0-100分）。</task>
+<response_format>返回 JSON 对象，包含 scores 对象，key 为模块名，value 为分数。</response_format>
 
 ## 评分维度
 
-**1. 核心度（权重最高）**
-- 主业务流程、核心算法所在 → 高分（80-100）
-- 纯工具/辅助性质 → 低分（10-30）
+- **核心度**：主业务流程、核心算法 → 高分（80-100）；纯工具/辅助 → 低分（10-30）
+- **依赖中心度**：被大量依赖的基础模块 → 高分（70-90）；独立运行 → 低分（10-30）
+- **入口重要性**：含 main/API/CLI → 高分（70-90）；仅内部调用 → 低分（40-60）
+- **领域独特性**：含项目特有领域逻辑 → 高分（70-90）；通用基础设施 → 低分（20-40）
 
-**2. 依赖中心度**
-- 被其他模块大量依赖的基础模块 → 高分（70-90）
-- 独立运行、不被引用 → 低分（10-30）
+## 示例
 
-**3. 入口重要性**
-- 含 main 入口、API 路由、CLI 命令 → 高分（70-90）
-- 仅内部调用 → 适当降低（40-60）
-
-**4. 领域独特性**
-- 含项目特有的领域逻辑 → 高分（70-90）
-- 通用基础设施 → 适当降低（20-40）
-
-**5. 代码复杂度**
-- 代码量大、逻辑复杂 → 适当加分
-- 简单数据传递 → 适当减分
-
-## 输出格式
-
-```json
-{{"core-agent": 95, "logging": 25, "test-utils": 15}}
-```"""
+输入：{{"modules": [
+  {{"name": "core-agent", "description": "ReAct 智能体循环和工具编排引擎", "files": ["agent/react_agent.py"]}},
+  {{"name": "llm-provider", "description": "LLM API 多协议适配层", "files": ["provider/adaptor.py"]}}
+]}}
+输出：{{"scores": {{"core-agent": 95, "llm-provider": 75}}}}"""
 
 SCORER_USER = """<project_name>{project_name}</project_name>
-<module_list>{module_list}</module_list>"""
+<modules>{modules_json}</modules>"""
 
 # =====================================================================
 # Stage: 子模块深度分析（ReAct Agent）

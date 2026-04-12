@@ -60,7 +60,8 @@ def run_pipeline(
     print(f"阶段 2/6: LLM 智能过滤")
     print(f"{'='*60}")
     llm_filter_files(ctx)
-    print(f"  LLM 评估后保留 {len(ctx.important_files)} 个重要文件")
+    important_count = sum(1 for f in ctx.all_files if f.is_important)
+    print(f"  LLM 评估后保留 {important_count} 个重要文件")
 
     # ====== 阶段 3: 模块拆分 ======
     print(f"\n{'='*60}")
@@ -76,23 +77,24 @@ def run_pipeline(
     print(f"阶段 4/6: 模块重要性打分")
     print(f"{'='*60}")
     score_and_rank_modules(ctx)
+    selected = ctx.modules[:max_sub_agents]
     print(f"  模块评分（从高到低）:")
-    for m in ctx.ranked_modules:
-        marker = " ★" if m in ctx.selected_modules else ""
-        print(f"    - {m.name}: {m.importance_score:.0f}分{marker}")
-    print(f"  选择前 {len(ctx.selected_modules)} 个模块进行深度研究")
+    for m in ctx.modules:
+        marker = " ★" if m in selected else ""
+        print(f"    - {m.name}: {m.score:.0f}分{marker}")
+    print(f"  选择前 {len(selected)} 个模块进行深度研究")
 
     # ====== 阶段 5: 子模块深度研究 ======
     print(f"\n{'='*60}")
     print(f"阶段 5/6: 子模块深度研究")
     print(f"{'='*60}")
-    research_modules(ctx, report_dir)
+    research_modules(ctx, report_dir, selected)
 
     # ====== 阶段 6: 汇总最终报告 ======
     print(f"\n{'='*60}")
     print(f"阶段 6/6: 汇总最终报告")
     print(f"{'='*60}")
-    aggregate_reports(ctx)
+    aggregate_reports(ctx, selected)
 
     # 写入最终报告
     final_path = os.path.join(report_dir, f"最终报告-{ctx.project_name}.md")
@@ -101,7 +103,7 @@ def run_pipeline(
     print(f"\n最终报告已写入: {final_path}")
 
     print(f"\n{'='*60}")
-    print(f"分析完成！共生成 {len(ctx.selected_modules)} 份模块报告 + 1 份最终报告")
+    print(f"分析完成！共生成 {len(selected)} 份模块报告 + 1 份最终报告")
     print(f"报告目录: {report_dir}")
     print(f"{'='*60}")
     return ctx.final_report

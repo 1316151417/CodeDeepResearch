@@ -11,21 +11,21 @@ from tool.fs_tool import set_project_root, read_file, list_directory, glob_patte
 from provider.llm import call_llm, extract_json
 
 
-def research_modules(ctx: PipelineContext, report_dir: str) -> None:
+def research_modules(ctx: PipelineContext, report_dir: str, selected: list[Module]) -> None:
     settings = ctx.settings
     parallel = settings.get("parallel_research", True)
     max_eval_rounds = settings.get("max_eval_rounds", 3)
 
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
-    total = len(ctx.selected_modules)
+    total = len(selected)
 
     if parallel and total > 1:
         max_workers = settings.get("max_parallel_workers", 8)
         print(f"  并行研究 {total} 个模块（最多 {max_eval_rounds} 轮评估，{max_workers} 并发）", flush=True)
         with ThreadPoolExecutor(max_workers=min(total, max_workers)) as executor:
             futures = {}
-            for module in ctx.selected_modules:
+            for module in selected:
                 future = executor.submit(_research_single_module, ctx, module, tools, max_eval_rounds, report_dir, verbose=False)
                 futures[future] = module
             for future in as_completed(futures):
@@ -45,7 +45,7 @@ def research_modules(ctx: PipelineContext, report_dir: str) -> None:
                     _write_module_report(report_dir, module)
     else:
         print(f"  串行研究 {total} 个模块", flush=True)
-        for module in ctx.selected_modules:
+        for module in selected:
             _research_single_module(ctx, module, tools, max_eval_rounds, report_dir, verbose=True)
 
 

@@ -14,7 +14,7 @@ class Module:
     name: str
     description: str
     files: list[str]
-    importance_score: float = 0.0
+    score: float = 0.0
     research_report: str = ""
 
 
@@ -33,15 +33,8 @@ class PipelineContext:
     # Stage 1: scanner output
     all_files: list[FileInfo] = field(default_factory=list)
 
-    # Stage 3: LLM filter output
-    important_files: list[FileInfo] = field(default_factory=list)
-
-    # Stage 4: decomposer output
+    # Stage 3: decomposer output
     modules: list[Module] = field(default_factory=list)
 
-    # Stage 5: scorer output
-    ranked_modules: list[Module] = field(default_factory=list)
-    selected_modules: list[Module] = field(default_factory=list)
-
-    # Stage 7: aggregator output
+    # Stage 5: aggregator output
     final_report: str = ""

@@ -9,11 +9,11 @@ from tool.fs_tool import set_project_root, read_file, list_directory, glob_patte
 from provider.llm import call_llm, extract_json
 
 
-def aggregate_reports(ctx: PipelineContext) -> None:
+def aggregate_reports(ctx: PipelineContext, selected: list) -> None:
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
 
-    module_reports = "\n\n---\n\n".join(f"### 模块：{m.name}\n\n{m.research_report}" for m in ctx.selected_modules)
+    module_reports = "\n\n---\n\n".join(f"### 模块：{m.name}\n\n{m.research_report}" for m in selected)
     max_eval_rounds = ctx.settings.get("max_eval_rounds", 1)
     final_report = ""
     eval_result = {"suggestions": []}
