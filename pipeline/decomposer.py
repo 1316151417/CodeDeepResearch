@@ -7,34 +7,51 @@ from prompt.pipeline_prompts import DECOMPOSER_SYSTEM, DECOMPOSER_USER
 
 
 def decompose_into_modules(ctx: PipelineContext) -> None:
-    file_list = "\n".join(f"  {f.path} ({f.size}B)" for f in ctx.important_files)
-    user_msg = DECOMPOSER_USER.format(project_name=ctx.project_name, file_list=file_list)
+    important_files = [f for f in ctx.all_files if f.is_important]
+    files_json = json.dumps([
+        {"path": f.path, "type": f.file_type, "size": f.size}
+        for f in important_files
+    ], ensure_ascii=False, indent=2)
 
-    response = call_llm(ctx.provider, DECOMPOSER_SYSTEM, user_msg, model=ctx.lite_model)
+    user_msg = DECOMPOSER_USER.format(project_name=ctx.project_name, files_json=files_json)
+    response = call_llm(ctx.provider, DECOMPOSER_SYSTEM, user_msg, model=ctx.lite_model, response_format={"type": "json_object"})
 
-    try:
-        raw_modules = json.loads(extract_json(response))
-    except json.JSONDecodeError:
-        ctx.modules = _fallback_decompose(ctx.important_files)
-        return
+    result = json.loads(extract_json(response))
+    modules_data = result.get("modules", [])
 
-    modules = []
-    existing_paths = {f.path for f in ctx.important_files}
-    for m in raw_modules:
-        name = m.get("name", "unknown")
+    existing_paths = {f.path for f in important_files}
+    ctx.modules = []
+    for m in modules_data:
+        name = m.get("name", "")
         description = m.get("description", "")
         files = m.get("files", [])
         valid_files = [f for f in files if f in existing_paths]
-        if valid_files:
-            modules.append(Module(name=name, description=description, files=valid_files))
+        if name and valid_files:
+            ctx.modules.append(Module(name=name, description=description, files=valid_files))
 
-    ctx.modules = modules if modules else _fallback_decompose(ctx.important_files)
+    if not ctx.modules:
+        raise ValueError(f"模块拆分失败：LLM 返回无效结果")
 
 
-def _fallback_decompose(files) -> list[Module]:
-    groups = {}
-    for f in files:
-        parts = f.path.split("/")
-        group_key = parts[0] if len(parts) > 1 else "root"
-        groups.setdefault(group_key, []).append(f.path)
-    return [Module(name=key, description=f"Files in {key}/", files=paths) for key, paths in groups.items()]
+if __name__ == "__main__":
+    import os
+    from pipeline.llm_filter import llm_filter_files
+    from pipeline.scanner import scan_project
+
+    project_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ctx = PipelineContext(project_path=project_path, project_name="CodeDeepResearch")
+    scan_project(ctx)
+    llm_filter_files(ctx)
+
+    important_files = [f for f in ctx.all_files if f.is_important]
+    print(f"重要文件：{len(important_files)} 个\n")
+
+    decompose_into_modules(ctx)
+
+    print(f"拆分 {len(ctx.modules)} 个模块：\n")
+    for m in ctx.modules:
+        print(f"## {m.name}")
+        print(f"{m.description}")
+        for f in m.files:
+            print(f"  - {f}")
+        print()

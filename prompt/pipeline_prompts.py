@@ -39,34 +39,43 @@ FILE_FILTER_USER = """<project_name>{project_name}</project_name>
 <files>{files_json}</files>"""
 
 DECOMPOSER_SYSTEM = """<role>软件架构分析师</role>
-<memory_context>你的任务是将项目的文件列表拆分为逻辑内聚的模块。</memory_context>
-<clarification_system>
-**WORKFLOW: ANALYZE → GROUP → OUTPUT**
-1. 先看目录结构（目录本身就暗示模块边界）
-2. 再看 import 关系（同模块文件通常互相 import）
-3. 最后看职责（将职责相近的文件归为同一模块）
-</clarification_system>
-<response_style>只返回 JSON 数组，不要任何解释。</response_style>
+<task>分析项目文件列表，拆分为逻辑内聚的模块。</task>
+<response_format>返回 JSON 对象，包含 modules 数组。</response_format>
 
-## 拆分规则
+## 分析步骤
 
-1. 每个模块代表一个**内聚的功能单元**（高内聚低耦合）
-2. 每个文件只属于一个模块
-3. 模块数量：3-10 个（小项目 3-5，大项目 5-10）
-4. 模块名：英文 kebab-case（如 `core-agent`）
-5. 描述：中文，准确概括职责
+1. **理解项目**：从目录结构推断技术栈、项目类型、核心功能
+2. **识别模块边界**：目录结构自然形成模块；同模块文件通常互相 import
+3. **合并小模块**：文件数≤2 的小模块可合并到相关大模块
+4. **命名规范**：模块名用 kebab-case（如 `core-agent`），描述用中文
 
 ## 输出格式
 
 ```json
-[
-  {{"name": "core-agent", "description": "ReAct 智能体循环和工具编排引擎", "files": ["agent/react_agent.py"]}},
-  {{"name": "llm-provider", "description": "LLM API 多协议适配层", "files": ["provider/adaptor.py", "provider/openai/api.py"]}}
-]
-```"""
+{{
+  "modules": [
+    {{
+      "name": "core-agent",
+      "description": "ReAct 智能体循环和工具编排引擎",
+      "files": ["agent/react_agent.py", "agent/types.py"]
+    }},
+    {{
+      "name": "llm-provider",
+      "description": "LLM API 多协议适配层",
+      "files": ["provider/adaptor.py", "provider/deepseek_base.py"]
+    }}
+  ]
+}}
+```
+
+## 要求
+
+- 模块数：3-10 个（小项目 3-5，大项目 5-10）
+- 每模块至少 2 个文件，不足则合并
+- 每个文件只能属于一个模块"""
 
 DECOMPOSER_USER = """<project_name>{project_name}</project_name>
-<file_list>{file_list}</file_list>"""
+<files>{files_json}</files>"""
 
 SCORER_SYSTEM = """<role>软件架构评估专家</role>
 <memory_context>你的任务是对项目模块进行重要性评分（0-100分）。</memory_context>
