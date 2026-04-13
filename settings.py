@@ -29,6 +29,7 @@ _DEFAULTS = {
     "max_sub_agent_steps": 30,
     "research_parallel": False,
     "research_threads": 4,
+    "debug": False,
 }
 
 _settings = None

@@ -5,9 +5,22 @@ import json
 import logging
 import os
 
-# Configure logger based on DEBUG environment variable
-DEBUG = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
-DEBUG = True  # 强制启用 DEBUG 模式，始终打印日志
+# Configure logger based on DEBUG environment variable or settings.json
+_DEBUG_ENV = os.environ.get("DEBUG", "").lower() in ("1", "true", "yes")
+
+
+def _get_debug() -> bool:
+    """Lazy check: env var takes precedence, then settings.json."""
+    if _DEBUG_ENV:
+        return True
+    try:
+        from settings import load_settings
+        return load_settings().get("debug", False)
+    except Exception:
+        return False
+
+
+DEBUG = _get_debug()
 
 # 禁止 httpx/httpcore 的 debug 日志（即使 DEBUG=1 也不打印 HTTP 请求日志）
 for _lib in ("httpx", "httpcore", "openai", "anthropic", "urllib3"):
