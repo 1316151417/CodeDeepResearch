@@ -57,6 +57,24 @@ class LLMAdaptor:
         else:
             yield from self._stream_anthropic(messages, params, **kwargs)
 
+    def call(self, messages, response_format=None):
+        """同步调用，返回完整文本内容。"""
+        params = {
+            "base_url": self._config.get("base_url"),
+            "api_key": self._config.get("api_key"),
+            "model": self._config.get("model"),
+            "max_tokens": self._config.get("max_tokens"),
+        }
+        if response_format is not None and self._provider == "openai":
+            params["response_format"] = response_format
+
+        response = self._call(messages, **params)
+
+        if self._provider == "anthropic":
+            return response.content[0].text
+        else:
+            return response.content
+
     def _compress_if_needed(self, messages) -> list:
         total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
         if total_chars <= MAX_CONTEXT_CHARS:
@@ -92,24 +110,7 @@ class LLMAdaptor:
 
         user_msg = COMPRESS_USER.format(conversation=conversation_text[:30000])
         try:
-            if self._provider == "anthropic":
-                response = self._call(
-                    messages=[{"role": "user", "content": user_msg}],
-                    base_url=self._config.get("base_url"),
-                    api_key=self._config.get("api_key"),
-                    model=self._config.get("model"),
-                    max_tokens=2048,
-                )
-                return response.content[0].text
-            else:
-                response = self._call(
-                    messages=[{"role": "user", "content": user_msg}],
-                    base_url=self._config.get("base_url"),
-                    api_key=self._config.get("api_key"),
-                    model=self._config.get("model"),
-                    max_tokens=2048,
-                )
-                return response.content
+            return self.call([{"role": "user", "content": user_msg}])
         except Exception as e:
             print(f"  [上下文压缩] 压缩失败: {e}")
             return ""
