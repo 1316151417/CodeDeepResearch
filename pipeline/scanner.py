@@ -6,7 +6,9 @@ from pipeline.types import PipelineContext, FileInfo
 
 # 不重要目录（os.walk 时直接跳过，不进入）
 UNIMPORTANT_DIRS = {
-    ".git", ".venv", "test", "log", "__pycache__"
+    ".git", ".venv", "test", "log", "__pycache__", 
+    # 定制化
+    "report"
 }
 # 不重要文件名
 UNIMPORTANT_NAMES = {
