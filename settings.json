@@ -14,10 +14,10 @@
     "max_tokens": 16384
   },
   "max": {
-    "provider": "openai",
+    "provider": "anthropic",
     "base_url": "https://api.deepseek.com/anthropic",
     "api_key": "${DEEPSEEK_API_KEY}",
-    "model": "deepseek-reasoner",
+    "model": "deepseek-chat",
     "max_tokens": 16384
   },
   "max_sub_agent_steps": 30,
