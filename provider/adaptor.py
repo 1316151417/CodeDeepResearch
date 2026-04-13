@@ -29,7 +29,7 @@ class LLMAdaptor:
             self._call_stream = call_stream_anthropic
             self._call = call_anthropic
         else:
-            raise ValueError(f"Unknown provider: {provider}")
+            raise ValueError(f"Unknown provider: {self._provider}")
 
     def stream(self, messages, tools=None, response_format=None, **kwargs):
         messages = normalize_messages(messages)
