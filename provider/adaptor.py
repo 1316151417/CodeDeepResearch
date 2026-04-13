@@ -9,6 +9,24 @@ MAX_CONTEXT_CHARS = 200_000
 COMPRESS_KEEP_RECENT = 6
 
 
+def _extract_json(text: str) -> str:
+    """从 LLM 响应中提取 JSON（可能被 markdown 代码块包裹）。"""
+    text = text.strip()
+    if "```" in text:
+        start = text.find("```")
+        end = text.rfind("```")
+        if start != end:
+            inner = text[start:end]
+            first_newline = inner.find("\n")
+            if first_newline != -1:
+                inner = inner[first_newline + 1:]
+            return inner.strip()
+    for i, ch in enumerate(text):
+        if ch in "[{":
+            return text[i:]
+    return text
+
+
 class LLMAdaptor:
     def __init__(self, config: dict):
         """
@@ -59,12 +77,17 @@ class LLMAdaptor:
 
     def call(self, messages, response_format=None):
         """同步调用，返回完整文本内容。"""
+        messages = normalize_messages(messages)
         params = {
             "base_url": self._config.get("base_url"),
             "api_key": self._config.get("api_key"),
             "model": self._config.get("model"),
             "max_tokens": self._config.get("max_tokens"),
         }
+        if self._provider == "anthropic":
+            messages = self._convert_messages_anthropic(messages, params)
+        else:
+            messages = self._convert_messages_openai(messages)
         if response_format is not None and self._provider == "openai":
             params["response_format"] = response_format
 
@@ -74,6 +97,11 @@ class LLMAdaptor:
             return response.content[0].text
         else:
             return response.content
+
+    def call_for_json(self, messages, response_format=None):
+        """同步调用，返回提取后的 JSON 文本。"""
+        content = self.call(messages, response_format=response_format)
+        return _extract_json(content)
 
     def _compress_if_needed(self, messages) -> list:
         total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)

@@ -2,7 +2,7 @@
 import json
 
 from base.types import SystemMessage, UserMessage
-from provider.llm import call_llm, extract_json
+from provider.adaptor import LLMAdaptor
 from pipeline.types import PipelineContext
 from prompt.pipeline_prompts import FILE_FILTER_SYSTEM, FILE_FILTER_USER
 
@@ -15,11 +15,12 @@ def llm_filter_files(ctx: PipelineContext) -> None:
         if f.is_important  # 初始标记为重要的才送入 LLM 进一步过滤
     ], ensure_ascii=False, indent=2)
 
-    user_msg = FILE_FILTER_USER.format(project_name=ctx.project_name, files_json=files_json)
-    response = call_llm(ctx.lite_config, FILE_FILTER_SYSTEM, user_msg, response_format={"type": "json_object"})
+    adaptor = LLMAdaptor(ctx.lite_config)
+    messages = [SystemMessage(FILE_FILTER_SYSTEM), UserMessage(FILE_FILTER_USER.format(project_name=ctx.project_name, files_json=files_json))]
+    response = adaptor.call_for_json(messages, response_format={"type": "json_object"})
 
     try:
-        result = json.loads(extract_json(response))
+        result = json.loads(response)
         unimportant_paths = set(result.get("unimportant_paths", []))
     except (json.JSONDecodeError, KeyError, TypeError):
         unimportant_paths = set()

@@ -1,7 +1,8 @@
 """Stage 3: 模块拆分 - 按目录结构 + import 关系划分模块."""
 import json
 
-from provider.llm import call_llm, extract_json
+from base.types import SystemMessage, UserMessage
+from provider.adaptor import LLMAdaptor
 from pipeline.types import PipelineContext, Module
 from prompt.pipeline_prompts import DECOMPOSER_SYSTEM, DECOMPOSER_USER
 
@@ -13,10 +14,11 @@ def decompose_into_modules(ctx: PipelineContext) -> None:
         for f in important_files
     ], ensure_ascii=False, indent=2)
 
-    user_msg = DECOMPOSER_USER.format(project_name=ctx.project_name, files_json=files_json)
-    response = call_llm(ctx.lite_config, DECOMPOSER_SYSTEM, user_msg, response_format={"type": "json_object"})
+    adaptor = LLMAdaptor(ctx.lite_config)
+    messages = [SystemMessage(DECOMPOSER_SYSTEM), UserMessage(DECOMPOSER_USER.format(project_name=ctx.project_name, files_json=files_json))]
+    response = adaptor.call_for_json(messages, response_format={"type": "json_object"})
 
-    result = json.loads(extract_json(response))
+    result = json.loads(response)
     modules_data = result.get("modules", [])
 
     existing_paths = {f.path for f in important_files}

@@ -1,7 +1,8 @@
 """Stage 4: 模块打分排序 - 按重要性评分并倒序."""
 import json
 
-from provider.llm import call_llm, extract_json
+from base.types import SystemMessage, UserMessage
+from provider.adaptor import LLMAdaptor
 from pipeline.types import PipelineContext
 from prompt.pipeline_prompts import SCORER_SYSTEM, SCORER_USER
 
@@ -12,10 +13,11 @@ def score_and_rank_modules(ctx: PipelineContext) -> None:
         for m in ctx.modules
     ], ensure_ascii=False, indent=2)
 
-    user_msg = SCORER_USER.format(project_name=ctx.project_name, modules_json=modules_json)
-    response = call_llm(ctx.lite_config, SCORER_SYSTEM, user_msg, response_format={"type": "json_object"})
+    adaptor = LLMAdaptor(ctx.lite_config)
+    messages = [SystemMessage(SCORER_SYSTEM), UserMessage(SCORER_USER.format(project_name=ctx.project_name, modules_json=modules_json))]
+    response = adaptor.call_for_json(messages, response_format={"type": "json_object"})
 
-    result = json.loads(extract_json(response))
+    result = json.loads(response)
     scores = result.get("scores", {})
 
     for m in ctx.modules:
