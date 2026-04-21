@@ -4,13 +4,17 @@ OpenAI-compatible API client - configurable via settings.
 import os
 import time
 
+import dotenv
+dotenv.load_dotenv()  # Load environment variables from .env file
+
 DEFAULT_TIMEOUT = 60
 MAX_RETRIES = 1
 
 
 def call_openai(messages, base_url=None, api_key=None, model=None, max_tokens=None, response_format=None, **kwargs):
     """OpenAI-compatible synchronous call with configurable endpoint."""
-    from openai import OpenAI, APITimeoutError, APIConnectionError
+    from langfuse.openai import OpenAI
+    from openai import APITimeoutError, APIConnectionError
 
     client = OpenAI(
         api_key=api_key or os.environ.get("DEEPSEEK_API_KEY"),
@@ -39,7 +43,8 @@ def call_openai(messages, base_url=None, api_key=None, model=None, max_tokens=No
 
 def call_stream_openai(messages, base_url=None, api_key=None, model=None, max_tokens=None, response_format=None, **kwargs):
     """OpenAI-compatible streaming call with configurable endpoint."""
-    from openai import OpenAI, APITimeoutError, APIConnectionError
+    from langfuse.openai import OpenAI
+    from openai import APITimeoutError, APIConnectionError
 
     client = OpenAI(
         api_key=api_key or os.environ.get("DEEPSEEK_API_KEY"),
