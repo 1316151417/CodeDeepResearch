@@ -1,5 +1,6 @@
 """Pipeline 主入口：6 阶段编排."""
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from settings import load_settings, get_lite_config, get_pro_config, get_max_config
@@ -8,7 +9,7 @@ from pipeline.scanner import scan_project
 from pipeline.llm_filter import llm_filter_files
 from pipeline.decomposer import decompose_into_modules
 from pipeline.scorer import score_and_rank_modules
-from pipeline.researcher import research_modules
+from pipeline.researcher import prepare_research, research_one_module
 from pipeline.aggregator import aggregate_reports
 
 from langfuse import observe, propagate_attributes
@@ -39,11 +40,9 @@ def _observed_score_and_rank_modules(ctx, session_id):
         return score_and_rank_modules(ctx)
 
 
-@observe(name="research_modules")
-def _observed_research_modules(ctx, report_dir, modules, session_id):
-    module_names = ",".join(m.name for m in modules)
-    with propagate_attributes(session_id=session_id, tags=[f"modules:{module_names}"]):
-        return research_modules(ctx, report_dir, modules)
+def _observed_research_module(ctx, module, tools, report_dir, file_tree, session_id):
+    with propagate_attributes(session_id=session_id):
+        return observe(name=f"research_module:{module.name}")(research_one_module)(ctx, module, tools, report_dir, file_tree)
 
 
 @observe(name="aggregate_reports")
@@ -117,7 +116,25 @@ def run_pipeline(
 
     # ====== 阶段 5: 深度研究 ======
     print(f"\n{'='*60}\n阶段 5/6: 子模块深度研究\n{'='*60}")
-    _observed_research_modules(ctx, report_dir, ctx.modules, session_id)
+    tools, file_tree = prepare_research(ctx)
+    if ctx.research_parallel:
+        print(f"  并行模式: {ctx.research_threads} 线程, {len(ctx.modules)} 个模块")
+        with ThreadPoolExecutor(max_workers=ctx.research_threads) as executor:
+            futures = {
+                executor.submit(_observed_research_module, ctx, m, tools, report_dir, file_tree, session_id): m
+                for m in ctx.modules
+            }
+            for future in as_completed(futures):
+                module = futures[future]
+                try:
+                    future.result()
+                    print(f"  ✓ 模块完成: {module.name}")
+                except Exception as e:
+                    print(f"  ✗ 模块失败: {module.name} - {e}")
+    else:
+        print(f"  串行模式: {len(ctx.modules)} 个模块")
+        for m in ctx.modules:
+            _observed_research_module(ctx, m, tools, report_dir, file_tree, session_id)
 
     # ====== 阶段 6: 汇总报告 ======
     print(f"\n{'='*60}\n阶段 6/6: 汇总最终报告\n{'='*60}")

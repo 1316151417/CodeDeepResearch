@@ -1,7 +1,6 @@
 """Stage 5: 子模块深度研究 - ReAct agent 研究模块并生成报告."""
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from base.types import EventType, SystemMessage, UserMessage
@@ -11,29 +10,38 @@ from prompt.pipeline_prompts import SUB_AGENT_SYSTEM, SUB_AGENT_USER
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
 
 
-def research_modules(ctx: PipelineContext, report_dir: str, selected: list[Module]) -> None:
+def prepare_research(ctx: PipelineContext) -> tuple:
+    """初始化研究工具和文件树，供 research_one_module 使用。"""
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
     file_tree = _build_file_tree(ctx.all_files)
+    return tools, file_tree
 
-    if ctx.research_parallel:
-        print(f"  并行模式: {ctx.research_threads} 线程, {len(selected)} 个模块")
-        with ThreadPoolExecutor(max_workers=ctx.research_threads) as executor:
-            futures = {
-                executor.submit(_research_one, ctx, module, tools, report_dir, file_tree): module
-                for module in selected
-            }
-            for future in as_completed(futures):
-                module = futures[future]
-                try:
-                    future.result()
-                    print(f"  ✓ 模块完成: {module.name}")
-                except Exception as e:
-                    print(f"  ✗ 模块失败: {module.name} - {e}")
-    else:
-        print(f"  串行模式: {len(selected)} 个模块")
-        for module in selected:
-            _research_one(ctx, module, tools, report_dir, file_tree)
+
+def research_one_module(ctx: PipelineContext, module: Module, tools: list, report_dir: str, file_tree: str) -> None:
+    """研究单个模块并生成报告。"""
+    set_project_root(ctx.project_path)
+
+    module_files_json = json.dumps([f for f in module.files], ensure_ascii=False, indent=2)
+
+    system = SUB_AGENT_SYSTEM.format()
+    messages = [
+        SystemMessage(system),
+        UserMessage(SUB_AGENT_USER.format(
+            project_name=ctx.project_name,
+            module_name=module.name,
+            file_tree=file_tree,
+            module_files_json=module_files_json,
+        )),
+    ]
+
+    events = react_stream(messages=messages, tools=tools, config=ctx.pro_config, max_steps=ctx.max_sub_agent_steps)
+
+    module.research_report = _collect_report(events)
+
+    path = os.path.join(report_dir, f"模块分析报告-{module.name}.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(module.research_report)
 
 
 def _build_file_tree(files) -> str:
@@ -62,31 +70,6 @@ def _render_tree(node: dict, lines: list, prefix: str) -> None:
             _render_tree(value, lines, child_prefix)
         else:
             lines.append(f"{prefix}{connector}{name}")
-
-
-def _research_one(ctx: PipelineContext, module: Module, tools: list, report_dir: str, file_tree: str) -> None:
-    set_project_root(ctx.project_path)
-
-    module_files_json = json.dumps([f for f in module.files], ensure_ascii=False, indent=2)
-
-    system = SUB_AGENT_SYSTEM.format()
-    messages = [
-        SystemMessage(system),
-        UserMessage(SUB_AGENT_USER.format(
-            project_name=ctx.project_name,
-            module_name=module.name,
-            file_tree=file_tree,
-            module_files_json=module_files_json,
-        )),
-    ]
-
-    events = react_stream(messages=messages, tools=tools, config=ctx.pro_config, max_steps=ctx.max_sub_agent_steps)
-
-    module.research_report = _collect_report(events)
-
-    path = os.path.join(report_dir, f"模块分析报告-{module.name}.md")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(module.research_report)
 
 
 def _get_file_type(path: str) -> str:
