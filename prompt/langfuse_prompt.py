@@ -18,4 +18,5 @@ def get_compiled_messages(name: str, **variables) -> list[dict]:
         编译后的消息列表，如 [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]
     """
     prompt = _client.get_prompt(name, type="chat")
+    _client.update_current_generation(prompt=prompt)
     return prompt.compile(**variables)
