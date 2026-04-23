@@ -3,7 +3,7 @@ import re
 import dotenv
 dotenv.load_dotenv()
 
-from langfuse import Langfuse
+from langfuse import get_client
 from prompt.pipeline_prompts import (
     FILE_FILTER_SYSTEM, FILE_FILTER_USER,
     DECOMPOSER_SYSTEM, DECOMPOSER_USER,
@@ -19,7 +19,7 @@ def _to_langfuse_vars(text: str) -> str:
     return re.sub(r'(?<!\{)\{(\w+)\}(?!\})', r'{{\1}}', text)
 
 
-langfuse = Langfuse()
+langfuse = get_client()
 
 # 每个 pipeline 阶段的 system + user 配对为 chat prompt
 chat_prompts = [

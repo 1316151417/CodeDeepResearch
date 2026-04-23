@@ -2,11 +2,11 @@
 import dotenv
 dotenv.load_dotenv()
 
-from langfuse import Langfuse
+from langfuse import get_client, observe
 
-_client = Langfuse()
+_client = get_client()
 
-
+@observe(as_type="generation")
 def get_compiled_messages(name: str, **variables) -> list[dict]:
     """从 Langfuse 获取 chat prompt 并编译模板变量。
 
