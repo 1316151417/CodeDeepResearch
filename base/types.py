@@ -122,6 +122,8 @@ class AssistantMessage(Message):
 
     def to_dict(self) -> dict:
         d = {"role": "assistant"}
+        if self.thinking:
+            d["reasoning_content"] = self.thinking
         if self.content:
             d["content"] = self.content
         if self.tool_calls:
