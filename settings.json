@@ -20,7 +20,7 @@
     "provider": "openai",
     "base_url": "https://api.deepseek.com",
     "api_key": "${DEEPSEEK_API_KEY}",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-v4-pro",
     "max_tokens": 8192,
     "thinking": true,
     "reasoning_effort": "max"
