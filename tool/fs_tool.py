@@ -1,10 +1,12 @@
 """
-Filesystem tools for ReAct agent - read_file, list_directory, glob_pattern, grep_content.
+Filesystem tools for ReAct agent - read_file, list_directory, glob_pattern, grep_content, scan_directory.
 """
 import os
 import re
 from contextvars import ContextVar
 from pathlib import Path
+
+import pathspec
 
 from base.types import tool
 
@@ -13,6 +15,23 @@ _project_root_var: ContextVar[str] = ContextVar('project_root', default='')
 
 MAX_READ_SIZE = 20 * 1024  # 20KB - 控制上下文膨胀
 MAX_GREP_RESULTS = 100
+MAX_SCAN_RESULTS = 500
+
+EXCLUDE_PATTERNS = [
+    ".git/", ".svn/", ".hg/", ".venv/", "venv/",
+    "__pycache__/", "*.pyc", "*.pyo", ".DS_Store",
+    "node_modules/", ".idea/", ".vscode/",
+]
+
+_exclude_spec = pathspec.PathSpec.from_lines("gitwildmatch", EXCLUDE_PATTERNS)
+
+
+def _load_gitignore_spec(root: str) -> pathspec.PathSpec | None:
+    gitignore_path = os.path.join(root, ".gitignore")
+    if not os.path.isfile(gitignore_path):
+        return None
+    with open(gitignore_path, "r", encoding="utf-8", errors="replace") as f:
+        return pathspec.PathSpec.from_lines("gitwildmatch", f)
 
 
 def set_project_root(path: str) -> None:
@@ -132,3 +151,51 @@ def grep_content(pattern: str, file_pattern: str = "**/*") -> str:
     if not results:
         return "No matches found."
     return "\n".join(results)
+
+
+@tool
+def scan_directory(dir_path: str, max_depth: int = 3) -> str:
+    """Recursively list all files in a directory with built-in filtering.
+    Automatically skips .git, node_modules, .venv, __pycache__, .idea, .vscode, etc.
+    Also respects .gitignore rules.
+
+    Args:
+        dir_path: Relative path from the project root, use '.' for root
+        max_depth: Maximum directory depth to scan, default 3
+    """
+    project_root = get_project_root()
+    full_path = os.path.join(project_root, dir_path) if project_root else dir_path
+
+    if not os.path.isdir(full_path):
+        return f"Error: Directory not found: {dir_path}"
+
+    gitignore_spec = _load_gitignore_spec(project_root)
+    lines = []
+    for dirpath, dirnames, filenames in os.walk(full_path):
+        rel_dir = os.path.relpath(dirpath, full_path)
+        depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
+        if depth >= max_depth:
+            dirnames.clear()
+            continue
+
+        dirnames[:] = sorted([
+            d for d in dirnames
+            if not _exclude_spec.match_file(d + "/")
+            and (gitignore_spec is None or not gitignore_spec.match_file(
+                os.path.join(rel_dir, d) + "/" if rel_dir != "." else d + "/"
+            ))
+        ])
+
+        for fname in sorted(filenames):
+            rel_path = os.path.join(rel_dir, fname) if rel_dir != "." else fname
+            if _exclude_spec.match_file(rel_path):
+                continue
+            if gitignore_spec is not None and gitignore_spec.match_file(rel_path):
+                continue
+            lines.append(rel_path)
+            if len(lines) >= MAX_SCAN_RESULTS:
+                return f"Found {len(lines)}+ files (truncated):\n" + "\n".join(lines)
+
+    if not lines:
+        return "(no files found)"
+    return f"Found {len(lines)} files:\n" + "\n".join(lines)

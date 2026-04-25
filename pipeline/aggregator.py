@@ -1,4 +1,4 @@
-"""Stage 6: 最终报告汇总 - ReAct agent 整合所有模块报告."""
+"""Stage 3: 最终报告汇总 - ReAct agent 整合所有章节报告."""
 import json
 
 from agent.react_agent import stream as react_stream
@@ -8,13 +8,20 @@ from pipeline.utils import build_file_tree, collect_report
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
 
 
-def aggregate_reports(ctx: PipelineContext, selected: list) -> None:
+def aggregate_reports(ctx: PipelineContext, chapters: list) -> None:
     set_project_root(ctx.project_path)
     tools = [read_file, list_directory, glob_pattern, grep_content]
 
-    module_reports = "\n\n---\n\n".join(f"### 模块：{m.name}\n\n{m.research_report}" for m in selected)
+    chapter_reports = []
+    for ch in chapters:
+        chapter_text = f"## 章：{ch.name}\n{ch.description}\n"
+        for sec in ch.sections:
+            chapter_text += f"\n### 节：{sec.name}\n{sec.research_report}\n"
+        chapter_reports.append(chapter_text)
+
+    module_reports = "\n\n---\n\n".join(chapter_reports)
     file_tree = build_file_tree(ctx.all_files)
-    important_files = list({f for m in selected for f in m.files})
+    important_files = list({f for ch in chapters for sec in ch.sections for f in sec.files})
 
     messages = get_compiled_messages("aggregator",
         project_name=ctx.project_name,

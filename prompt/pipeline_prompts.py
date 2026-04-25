@@ -2,44 +2,71 @@
 # Stage: 模块拆分
 # =====================================================================
 
-DECOMPOSER_SYSTEM = """<role>软件架构分析师</role>
-<task>分析项目文件列表，拆分为逻辑内聚的模块。</task>
-<response_format>返回 JSON 对象，包含 modules 数组。</response_format>
+EXPLORER_SYSTEM = """<role>资深软件架构分析师</role>
+<task>探索项目结构，理解代码组织，输出两层级章节分解方案。</task>
 
-## 分析步骤
+## 工具
+- scan_directory: 递归列出目录下的所有文件（自动过滤 .git/node_modules/.venv/__pycache__ 等，也遵循 .gitignore）
+- read_file: 读取文件内容
+- list_directory: 列出单层目录结构
+- glob_pattern: 按模式搜索文件
+- grep_content: 搜索文件内容
+**批量调用，每次最多 10 个。**
 
-1. **理解项目**：从目录结构推断技术栈、项目类型、核心功能
-2. **识别模块边界**：目录结构自然形成模块；同模块文件通常互相 import
-3. **合并小模块**：文件数≤2 的小模块可合并到相关大模块
-4. **命名规范**：模块名用 kebab-case（如 `core-agent`），描述用中文
+## 工作流程
+
+### 步骤 1: 全面扫描
+用 scan_directory('.') 获取项目全貌。如有需要，对重点子目录再次 scan_directory 了解细节。
+
+### 步骤 2: 深入理解
+批量 read_file 关键配置文件（package.json, pyproject.toml, Cargo.toml, go.mod 等）和入口文件，理解技术栈和项目类型。
+
+### 步骤 3: 交叉验证
+用 grep_content 搜索 import/require 关系，确认模块间依赖。
+
+### 步骤 4+: 输出 JSON（不再调用工具）
+在最后一步，直接输出 JSON 结构。不再调用任何工具。
 
 ## 输出格式
 
-```json
+输出纯 JSON，不要包裹在 markdown 代码块中：
+
 {{
-  "modules": [
+  "chapters": [
     {{
-      "name": "core-agent",
-      "description": "ReAct 智能体循环和工具编排引擎",
-      "files": ["agent/react_agent.py", "agent/types.py"]
-    }},
-    {{
-      "name": "llm-provider",
-      "description": "LLM API 多协议适配层",
-      "files": ["provider/adaptor.py", "provider/deepseek_base.py"]
+      "name": "chapter-kebab-case",
+      "description": "章节的中文描述，说明这个章节涵盖的代码范围",
+      "sections": [
+        {{
+          "name": "section-kebab-case",
+          "description": "子节的中文描述",
+          "files": ["path/to/file1.py", "path/to/file2.py"]
+        }}
+      ]
     }}
   ]
 }}
-```
 
-## 要求
+## 章节分解规则
 
-- 模块数：3-10 个（小项目 3-5，大项目 5-10）
-- 每模块至少 2 个文件，不足则合并
-- 每个文件只能属于一个模块"""
+1. **章（Level 1）**：按架构层或功能域划分，3-7 个章
+   - 例："pipeline-design"（流水线设计）、"llm-provider"（LLM 提供者层）
+   - 每章包含 2-5 个子节
+2. **节（Level 2）**：按代码内聚性划分，每节至少 2 个文件
+   - 例：在 "pipeline-design" 章下可以有 "react-agent-loop"、"tool-system" 等节
+3. **文件分配**：每个文件只属于一个节，所有文件都必须被分配
+4. **命名**：使用 kebab-case，描述使用中文
 
-DECOMPOSER_USER = """<project_name>{project_name}</project_name>
-<files>{files_json}</files>"""
+## 质量要求
+
+- 必须通过工具实际查看文件内容，不能仅凭路径猜测
+- 章节、节名称要反映代码的实际职责
+- 文件分配要基于 import/调用关系，而非仅凭目录位置
+- ❌ 不能泛泛而谈，必须有充分的工具探索作为依据"""
+
+EXPLORER_USER = """<project_name>{project_name}</project_name>
+
+立即开始探索 {project_name} 项目。先用 scan_directory('.') 获取全貌，再深入理解关键文件，最后输出章节分解 JSON。不要有任何铺垫文字。"""
 
 # =====================================================================
 # Stage: 子模块深度分析（ReAct Agent）

@@ -1,4 +1,4 @@
-"""Pipeline 主入口：4 阶段编排."""
+"""Pipeline 主入口：3 阶段编排."""
 import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -8,8 +8,7 @@ from langfuse import observe, propagate_attributes
 
 from settings import load_settings, get_config
 from pipeline.types import PipelineContext
-from pipeline.scanner import scan_project
-from pipeline.decomposer import decompose_into_modules
+from pipeline.explorer import explore_and_decompose
 from pipeline.researcher import prepare_research, research_one_module
 from pipeline.aggregator import aggregate_reports
 
@@ -57,55 +56,56 @@ def run_pipeline(
     os.makedirs(report_dir, exist_ok=True)
     print(f"报告输出目录: {report_dir}")
 
-    # ====== 阶段 1: 扫描 ======
-    print(f"\n{'='*60}\n阶段 1/4: 扫描项目 [{project_name}]\n{'='*60}")
-    _observed("scan_project", scan_project, ctx, session_id=session_id)
-    print(f"  扫描到 {len(ctx.all_files)} 个文件")
+    # ====== 阶段 1: 探索与分解 ======
+    print(f"\n{'='*60}\n阶段 1/3: 探索与分解 [{project_name}]\n{'='*60}")
+    _observed("explore_and_decompose", explore_and_decompose, ctx, session_id=session_id)
+    total_sections = sum(len(ch.sections) for ch in ctx.chapters)
+    print(f"  识别到 {len(ctx.chapters)} 个章, {total_sections} 个节:")
+    for ch in ctx.chapters:
+        print(f"    章: {ch.name} - {ch.description}")
+        for sec in ch.sections:
+            print(f"      节: {sec.name} ({len(sec.files)} 个文件)")
 
-    # ====== 阶段 2: 模块拆分 ======
-    print(f"\n{'='*60}\n阶段 2/4: 模块拆分\n{'='*60}")
-    _observed("decompose_into_modules", decompose_into_modules, ctx, session_id=session_id)
-    print(f"  识别到 {len(ctx.modules)} 个模块:")
-    for m in ctx.modules:
-        print(f"    - {m.name}: {m.description} ({len(m.files)} 个文件)")
-
-    # ====== 阶段 3: 深度研究 ======
-    print(f"\n{'='*60}\n阶段 3/4: 子模块深度研究\n{'='*60}")
+    # ====== 阶段 2: 深度研究 ======
+    print(f"\n{'='*60}\n阶段 2/3: 节深度研究\n{'='*60}")
+    all_sections = [sec for ch in ctx.chapters for sec in ch.sections]
     tools, file_tree = prepare_research(ctx)
     if ctx.research_parallel:
-        print(f"  并行模式: {ctx.research_threads} 线程, {len(ctx.modules)} 个模块")
+        print(f"  并行模式: {ctx.research_threads} 线程, {len(all_sections)} 个节")
         with ThreadPoolExecutor(max_workers=ctx.research_threads) as executor:
             futures = {
-                executor.submit(_observed_research_module, ctx, m, tools, report_dir, file_tree, session_id): m
-                for m in ctx.modules
+                executor.submit(_observed_research_section, ctx, sec, tools, report_dir, file_tree, session_id): sec
+                for sec in all_sections
             }
             for future in as_completed(futures):
-                module = futures[future]
+                sec = futures[future]
                 try:
                     future.result()
-                    print(f"  ✓ 模块完成: {module.name}")
+                    print(f"  ✓ 节完成: {sec.name}")
                 except Exception as e:
-                    print(f"  ✗ 模块失败: {module.name} - {e}")
+                    print(f"  ✗ 节失败: {sec.name} - {e}")
     else:
-        print(f"  串行模式: {len(ctx.modules)} 个模块")
-        for m in ctx.modules:
-            _observed_research_module(ctx, m, tools, report_dir, file_tree, session_id)
+        print(f"  串行模式: {len(all_sections)} 个节")
+        for sec in all_sections:
+            _observed_research_section(ctx, sec, tools, report_dir, file_tree, session_id)
 
-    # ====== 阶段 4: 汇总报告 ======
-    print(f"\n{'='*60}\n阶段 4/4: 汇总最终报告\n{'='*60}")
-    _observed("aggregate_reports", aggregate_reports, ctx, ctx.modules, session_id=session_id)
+    # ====== 阶段 3: 汇总报告 ======
+    print(f"\n{'='*60}\n阶段 3/3: 汇总最终报告\n{'='*60}")
+    _observed("aggregate_reports", aggregate_reports, ctx, ctx.chapters, session_id=session_id)
 
     final_path = os.path.join(report_dir, f"最终报告-{ctx.project_name}.md")
     with open(final_path, "w", encoding="utf-8") as f:
         f.write(ctx.final_report)
 
     print(f"\n{'='*60}")
-    print(f"分析完成！共 {len(ctx.modules)} 个模块报告 + 1 份最终报告")
+    print(f"分析完成！共 {len(ctx.chapters)} 章, {total_sections} 节报告 + 1 份最终报告")
     print(f"报告目录: {report_dir}")
     print(f"{'='*60}")
     return ctx.final_report
 
 
-def _observed_research_module(ctx, module, tools, report_dir, file_tree, session_id):
+def _observed_research_section(ctx, section, tools, report_dir, file_tree, session_id):
     with propagate_attributes(session_id=session_id):
-        return observe(name=f"research_module:{module.name}")(research_one_module)(ctx, module, tools, report_dir, file_tree)
+        return observe(name=f"research_section:{section.name}")(research_one_module)(
+            ctx, section, tools, report_dir, file_tree,
+        )

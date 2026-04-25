@@ -7,11 +7,24 @@ class FileInfo:
 
 
 @dataclass
-class Module:
+class Section:
+    """Level 2: 子节."""
     name: str
     description: str
     files: list[str]
     research_report: str = ""
+
+
+# 兼容 researcher.py
+Module = Section
+
+
+@dataclass
+class Chapter:
+    """Level 1: 章."""
+    name: str
+    description: str
+    sections: list[Section] = field(default_factory=list)
 
 
 @dataclass
@@ -26,11 +39,9 @@ class PipelineContext:
     research_threads: int = 4
     settings: dict = field(default_factory=dict)
 
-    # Stage 1: scanner output
+    # Stage 1: explorer output
     all_files: list[FileInfo] = field(default_factory=list)
+    chapters: list[Chapter] = field(default_factory=list)
 
-    # Stage 2: decomposer output
-    modules: list[Module] = field(default_factory=list)
-
-    # Stage 4: aggregator output
+    # Stage 3: aggregator output
     final_report: str = ""
