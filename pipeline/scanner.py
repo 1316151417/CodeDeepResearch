@@ -1,78 +1,67 @@
+"""Stage 1: 扫描项目文件 - 基于 .gitignore + 默认排除规则."""
 import os
-import re
 from pathlib import Path
+
+import pathspec
 
 from pipeline.types import PipelineContext, FileInfo
 
-# 不重要目录（os.walk 时直接跳过，不进入）
-UNIMPORTANT_DIRS = {
-    ".git", ".venv", "test", "log", "__pycache__", ".report"
-}
-# 不重要文件名
-UNIMPORTANT_NAMES = {
-    ".DS_Store", ".gitignore", "CLAUDE.md", "__init__.py"
-}
-
-# 不重要扩展名
-UNIMPORTANT_EXTENSIONS = {
-    ".log", ".lock"
-}
-
-# 文档扩展名
-DOC_EXTENSIONS = {
-    ".md"
-}
-
-# 配置文件
-CONFIG_NAMES = {
-    ".python-version"
-}
-# 配置扩展名
-CONFIG_EXTENSIONS = {
-    ".json", ".xml", ".yml", ".yaml", ".toml"
-}
+# 默认排除模式（.gitignore 通常不覆盖的路径）
+DEFAULT_EXCLUDE_PATTERNS = [
+    ".git/",
+    ".svn/",
+    ".hg/",
+    ".venv/",
+    "venv/",
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    ".DS_Store",
+    "node_modules/",
+    ".idea/",
+    ".vscode/",
+]
 
 
-def _get_file_type(path: str) -> str:
-    name = os.path.basename(path)
-    ext = os.path.splitext(path)[1].lower()
-    if ext in DOC_EXTENSIONS or name in DOC_EXTENSIONS:
-        return "doc"
-    if ext in CONFIG_EXTENSIONS or name in CONFIG_NAMES:
-        return "config"
-    return "code"
-
-
-def _is_important(path: str, name: str = "") -> bool:
-    name = name or os.path.basename(path)
-    ext = os.path.splitext(name)[1].lower()
-    if name in UNIMPORTANT_NAMES or ext in UNIMPORTANT_EXTENSIONS:
-        return False
-    if any(p in UNIMPORTANT_DIRS for p in Path(path).parts):
-        return False
-    return True
+def _load_gitignore_spec(root: Path) -> pathspec.PathSpec | None:
+    """解析项目根目录的 .gitignore 文件。"""
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.is_file():
+        return None
+    with open(gitignore_path, "r", encoding="utf-8", errors="replace") as f:
+        return pathspec.PathSpec.from_lines("gitwildmatch", f)
 
 
 def scan_project(ctx: PipelineContext) -> None:
     root = Path(ctx.project_path)
-    all_files = []
 
+    default_spec = pathspec.PathSpec.from_lines("gitwildmatch", DEFAULT_EXCLUDE_PATTERNS)
+    gitignore_spec = _load_gitignore_spec(root)
+
+    all_files = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in sorted(dirnames) if d not in UNIMPORTANT_DIRS and not d.startswith(".")]
+        rel_dir = os.path.relpath(dirpath, root)
+
+        # 剪枝：排除匹配的目录，阻止 os.walk 递归进入
+        dirnames[:] = sorted([
+            d for d in dirnames
+            if not default_spec.match_file(d + "/")
+            and (gitignore_spec is None or not gitignore_spec.match_file(
+                os.path.join(rel_dir, d) + "/" if rel_dir != "." else d + "/"
+            ))
+        ])
 
         for fname in sorted(filenames):
-            rel_dir = os.path.relpath(dirpath, root)
             rel_path = os.path.join(rel_dir, fname) if rel_dir != "." else fname
-            full_path = os.path.join(dirpath, fname)
 
-            try:
-                size = os.path.getsize(full_path)
-            except OSError:
+            # 默认排除规则
+            if default_spec.match_file(rel_path):
                 continue
 
-            important = _is_important(rel_path, fname)
-            fi = FileInfo(path=rel_path, size=size, file_type=_get_file_type(rel_path), is_important=important)
-            all_files.append(fi)
+            # .gitignore 规则
+            if gitignore_spec is not None and gitignore_spec.match_file(rel_path):
+                continue
+
+            all_files.append(FileInfo(path=rel_path))
 
     ctx.all_files = all_files
-

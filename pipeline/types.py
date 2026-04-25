@@ -4,9 +4,6 @@ from dataclasses import dataclass, field
 @dataclass
 class FileInfo:
     path: str
-    size: int
-    file_type: str = ""  # code, doc, config, log
-    is_important: bool = True
 
 
 @dataclass
@@ -14,7 +11,6 @@ class Module:
     name: str
     description: str
     files: list[str]
-    score: float = 0.0
     research_report: str = ""
 
 
@@ -33,8 +29,8 @@ class PipelineContext:
     # Stage 1: scanner output
     all_files: list[FileInfo] = field(default_factory=list)
 
-    # Stage 3: decomposer output
+    # Stage 2: decomposer output
     modules: list[Module] = field(default_factory=list)
 
-    # Stage 5: aggregator output
+    # Stage 4: aggregator output
     final_report: str = ""

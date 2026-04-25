@@ -11,7 +11,7 @@
     "provider": "anthropic",
     "base_url": "https://api.deepseek.com",
     "api_key": "${DEEPSEEK_API_KEY}",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-v4-pro",
     "max_tokens": 8192,
     "thinking": true,
     "reasoning_effort": "high"
@@ -20,10 +20,10 @@
     "provider": "anthropic",
     "base_url": "https://api.deepseek.com",
     "api_key": "${DEEPSEEK_API_KEY}",
-    "model": "deepseek-v4-flash",
+    "model": "deepseek-v4-pro",
     "max_tokens": 8192,
     "thinking": true,
-    "reasoning_effort": "high"
+    "reasoning_effort": "max"
   },
   "max_sub_agent_steps": 30,
   "research_parallel": true,

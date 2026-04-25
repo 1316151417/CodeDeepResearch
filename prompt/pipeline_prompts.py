@@ -1,44 +1,4 @@
 # =====================================================================
-# Stage: LLM 文件过滤
-# =====================================================================
-
-FILE_FILTER_SYSTEM = """<role>代码架构分析助手</role>
-<task>分析项目文件列表，标记不重要的文件。</task>
-<response_format>返回 JSON 对象，包含 unimportant_paths 数组，列出不重要的文件路径。</response_format>
-
-## 重要文件（保留）
-
-- 核心业务逻辑、算法实现
-- API 入口（路由、控制器、CLI）
-- 数据模型、类型定义
-- 基础设施（中间件、认证、错误处理）
-- **配置文件**：pyproject.toml、settings.json、config.py、.python-version 等项目配置文件
-- **工具/工具类**：tool/ 目录下的工具模块
-- **重要文档**：README.md（项目介绍和使用说明）
-
-## 不重要文件（排除）
-
-- **测试文件**：test_、_test、Test、Tests、TestCase、.spec.、.test.、conftest
-- **不重要文档**：CHANGELOG、LICENSE、CONTRIBUTING 等（README.md 除外）
-- **生成代码**：swagger 生成、protobuf、ORM migration、mock 数据
-- **构建/部署**：Dockerfile、Makefile、docker-compose、CI 配置
-- **IDE/编辑器**：.eslintrc、.prettierrc、.editorconfig 等
-- **示例/演示**：example、demo、sample 目录
-
-## 示例
-
-输入：{{"files": [
-  {{"path": "src/main.py", "type": "code", "size": 1024}},
-  {{"path": "tests/test_main.py", "type": "code", "size": 256}},
-  {{"path": "README.md", "type": "doc", "size": 512}},
-  {{"path": "pyproject.toml", "type": "config", "size": 128}}
-]}}
-输出：{{"unimportant_paths": ["tests/test_main.py", "README.md"]}}"""
-
-FILE_FILTER_USER = """<project_name>{project_name}</project_name>
-<files>{files_json}</files>"""
-
-# =====================================================================
 # Stage: 模块拆分
 # =====================================================================
 
@@ -80,32 +40,6 @@ DECOMPOSER_SYSTEM = """<role>软件架构分析师</role>
 
 DECOMPOSER_USER = """<project_name>{project_name}</project_name>
 <files>{files_json}</files>"""
-
-# =====================================================================
-# Stage: 模块评分
-# =====================================================================
-
-SCORER_SYSTEM = """<role>软件架构评估专家</role>
-<task>对项目模块进行重要性评分（0-100分）。</task>
-<response_format>返回 JSON 对象，包含 scores 对象，key 为模块名，value 为分数。</response_format>
-
-## 评分维度
-
-- **核心度**：主业务流程、核心算法 → 高分（80-100）；纯工具/辅助 → 低分（10-30）
-- **依赖中心度**：被大量依赖的基础模块 → 高分（70-90）；独立运行 → 低分（10-30）
-- **入口重要性**：含 main/API/CLI → 高分（70-90）；仅内部调用 → 低分（40-60）
-- **领域独特性**：含项目特有领域逻辑 → 高分（70-90）；通用基础设施 → 低分（20-40）
-
-## 示例
-
-输入：{{"modules": [
-  {{"name": "core-agent", "description": "ReAct 智能体循环和工具编排引擎", "files": ["agent/react_agent.py"]}},
-  {{"name": "llm-provider", "description": "LLM API 多协议适配层", "files": ["provider/adaptor.py"]}}
-]}}
-输出：{{"scores": {{"core-agent": 95, "llm-provider": 75}}}}"""
-
-SCORER_USER = """<project_name>{project_name}</project_name>
-<modules>{modules_json}</modules>"""
 
 # =====================================================================
 # Stage: 子模块深度分析（ReAct Agent）

@@ -1,4 +1,4 @@
-"""Stage 3: 模块拆分 - 按目录结构 + import 关系划分模块."""
+"""Stage 2: 模块拆分 - 按目录结构 + import 关系划分模块."""
 import json
 
 from provider.adaptor import LLMAdaptor
@@ -7,11 +7,7 @@ from prompt.langfuse_prompt import get_compiled_messages
 
 
 def decompose_into_modules(ctx: PipelineContext) -> None:
-    important_files = [f for f in ctx.all_files if f.is_important]
-    files_json = json.dumps([
-        {"path": f.path, "type": f.file_type, "size": f.size}
-        for f in important_files
-    ], ensure_ascii=False, indent=2)
+    files_json = json.dumps([f.path for f in ctx.all_files], ensure_ascii=False, indent=2)
 
     adaptor = LLMAdaptor(ctx.lite_config)
     messages = get_compiled_messages("decomposer", project_name=ctx.project_name, files_json=files_json)
@@ -20,7 +16,7 @@ def decompose_into_modules(ctx: PipelineContext) -> None:
     result = json.loads(response)
     modules_data = result.get("modules", [])
 
-    existing_paths = {f.path for f in important_files}
+    existing_paths = {f.path for f in ctx.all_files}
     ctx.modules = []
     for m in modules_data:
         name = m.get("name", "")
