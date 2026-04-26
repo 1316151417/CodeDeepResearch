@@ -2,7 +2,8 @@
 ReAct Agent - implements the Observe -> Think -> Act loop with streaming events.
 """
 import json
-import re
+
+from dataclasses import dataclass, field
 
 from log.logger import logger
 from provider.adaptor import LLMAdaptor
@@ -13,13 +14,42 @@ from langfuse import observe
 MAX_STEP_CNT = 30
 
 
-def _stream(adaptor, messages, tools):
-    """直接透传 adaptor.stream() 的迭代器。"""
-    yield from adaptor.stream(messages, tools=tools)
+@dataclass
+class _Step:
+    """Accumulates streaming events within a single ReAct step."""
+    content: str = ""
+    thinking: str = ""
+    tool_calls: list = field(default_factory=list)
+    tool_results: dict = field(default_factory=dict)
+
+    def process(self, event: Event) -> None:
+        if event.type == EventType.THINKING_DELTA:
+            self.thinking += event.content or ""
+        elif event.type == EventType.CONTENT_DELTA:
+            self.content += event.content or ""
+        elif event.type == EventType.TOOL_CALL:
+            self.tool_calls.append(event.raw)
+
+    def build_messages(self) -> list:
+        """Build AssistantMessage + ToolMessages for appending to conversation."""
+        msgs = [AssistantMessage(
+            content=self.content,
+            tool_calls=self.tool_calls,
+            thinking=self.thinking,
+        )]
+        for tc in self.tool_calls:
+            tr = self.tool_results[tc["id"]]
+            msgs.append(ToolMessage(
+                tool_id=tc["id"],
+                tool_name=tc["name"],
+                tool_result=tr["result"],
+                tool_error=tr["error"],
+            ))
+        return msgs
 
 
-def _parse_tool_arguments(arguments_str: str) -> dict:
-    """安全解析 tool arguments JSON字符串。"""
+def _parse_arguments(arguments_str: str) -> dict:
+    """Parse tool call arguments JSON."""
     if not arguments_str:
         return {}
     try:
@@ -28,80 +58,53 @@ def _parse_tool_arguments(arguments_str: str) -> dict:
         raise ValueError(f"Invalid JSON in tool arguments: {arguments_str[:100]}... ({e})")
 
 
-def _execute_tool(tool, tool_arguments: str):
-    """执行工具，返回 (result, error)。"""
-    try:
-        args = _parse_tool_arguments(tool_arguments)
-        result = tool(**args)
-        logger.debug(f"[ReAct] 工具结果: {str(result)[:100]}...")
-        return result, None
-    except Exception as e:
-        logger.debug(f"[ReAct] 工具执行失败 {tool.name}: {e}")
-        return None, str(e)
-
 @observe(name="react_agent_stream")
 def stream(messages, tools, config: dict, max_steps=MAX_STEP_CNT):
-    """ReAct stream generator: yields events for each step.
-
-    Args:
-        messages: list of messages
-        tools: list of Tool objects
-        config: dict containing {provider, base_url, api_key, model, max_tokens}
-        max_steps: maximum number of steps
-    """
-    logger.debug(f"[ReAct] 开始 (provider={config.get('provider')}, model={config.get('model')}, max_steps={max_steps})")
-    for msg in messages:
-        logger.debug(f"[ReAct] 消息: {msg}")
-    logger.debug(f"[ReAct] 工具定义: {[t.name for t in tools]}")
-
+    """ReAct stream generator: yields events for each step."""
     adaptor = LLMAdaptor(config)
-    react_finished = False
-    step = 1
+    tool_map = {t.name: t for t in tools}
 
-    while (not react_finished) and step <= max_steps:
-        cur_step = step
-        yield Event(type=EventType.STEP_START, step=cur_step)
-        step = step + 1
+    for step in range(1, max_steps + 1):
+        compressed = adaptor.compress_if_needed(messages)
+        if compressed is not messages:
+            messages.clear()
+            messages.extend(compressed)
 
-        content = ""
-        thinking = ""
-        raw_tool_calls = []
-        tool_results = {}
+        yield Event(type=EventType.STEP_START, step=step)
+        step_state = _Step()
 
-        logger.debug(f"[ReAct] 步骤 {cur_step} 开始")
-
-        for event in _stream(adaptor, messages, tools):
+        for event in adaptor.stream(messages, tools):
             yield event
-            if event.type == EventType.THINKING_DELTA:
-                thinking += event.content or ""
-                if event.content:
-                    logger.debug(event.content, end="")
-            elif event.type == EventType.CONTENT_DELTA:
-                content += event.content or ""
-                if event.content:
-                    logger.debug(event.content, end="")
-            elif event.type == EventType.TOOL_CALL:
-                raw_tool_calls.append(event.raw)
-                logger.debug(f"\n[ReAct] 调用工具: {event.tool_name}({event.tool_arguments[:80] if event.tool_arguments else ''}...)")
-                tool = next((t for t in tools if t.name == event.tool_name), None)
+            step_state.process(event)
+
+            if event.type == EventType.TOOL_CALL:
+                tool = tool_map.get(event.tool_name)
                 if tool is None:
                     raise RuntimeError(f"Tool '{event.tool_name}' not found")
-                result, error = _execute_tool(tool, event.tool_arguments)
-                tool_results[event.tool_id] = {"result": result, "error": error}
-                yield Event(type=EventType.TOOL_CALL_SUCCESS if not error else EventType.TOOL_CALL_FAILED, tool_id=event.tool_id, tool_name=event.tool_name, tool_arguments=event.tool_arguments, tool_result=result, tool_error=error)
 
-        logger.debug(f"[ReAct] 步骤 {cur_step} 结束，输出长度: {len(content)}")
+                logger.debug(f"[ReAct] 调用工具: {event.tool_name}({(event.tool_arguments or '')[:80]}...)")
+                try:
+                    result = tool(**_parse_arguments(event.tool_arguments))
+                    error = None
+                    logger.debug(f"[ReAct] 工具结果: {str(result)[:100]}...")
+                except Exception as e:
+                    result = None
+                    error = str(e)
+                    logger.debug(f"[ReAct] 工具执行失败 {tool.name}: {e}")
 
-        yield Event(type=EventType.STEP_END, content=content, step=cur_step)
+                step_state.tool_results[event.tool_id] = {"result": result, "error": error}
+                yield Event(
+                    type=EventType.TOOL_CALL_SUCCESS if not error else EventType.TOOL_CALL_FAILED,
+                    tool_id=event.tool_id,
+                    tool_name=event.tool_name,
+                    tool_arguments=event.tool_arguments,
+                    tool_result=result,
+                    tool_error=error,
+                )
 
-        if not raw_tool_calls:
-            react_finished = True
+        yield Event(type=EventType.STEP_END, content=step_state.content, step=step)
+
+        if not step_state.tool_calls:
             break
 
-        messages.append(AssistantMessage(content=content, tool_calls=raw_tool_calls, thinking=thinking))
-        for raw_tc in raw_tool_calls:
-            tid = raw_tc["id"]
-            tr = tool_results[tid]
-            messages.append(ToolMessage(tool_id=tid, tool_name=raw_tc["name"], tool_result=tr["result"], tool_error=tr["error"]))
-
-    logger.debug(f"[ReAct] 结束")
+        messages.extend(step_state.build_messages())

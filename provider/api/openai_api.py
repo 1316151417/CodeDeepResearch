@@ -4,9 +4,6 @@ OpenAI-compatible API client - configurable via settings.
 import os
 import time
 
-import dotenv
-dotenv.load_dotenv()
-
 DEFAULT_TIMEOUT = 60
 MAX_RETRIES = 1
 

@@ -53,8 +53,6 @@ class LLMAdaptor:
         messages = normalize_messages(messages)
         params = {}
 
-        messages = self._compress_if_needed(messages)
-
         if self._provider == "anthropic":
             messages = self._convert_messages_anthropic(messages, params)
         else:
@@ -76,6 +74,38 @@ class LLMAdaptor:
             yield from self._stream_openai(messages, params, **kwargs)
         else:
             yield from self._stream_anthropic(messages, params, **kwargs)
+
+    def compress_if_needed(self, messages) -> list:
+        messages = normalize_messages(messages)
+        total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
+        if total_chars <= MAX_CONTEXT_CHARS:
+            return messages
+
+        print(f"\n  [上下文压缩] {total_chars} 字符超过阈值 {MAX_CONTEXT_CHARS}，开始压缩...")
+
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        other_msgs = [m for m in messages if m.get("role") != "system"]
+
+        if len(other_msgs) <= COMPRESS_KEEP_RECENT:
+            return messages
+
+        to_compress = other_msgs[:-COMPRESS_KEEP_RECENT]
+        to_keep = other_msgs[-COMPRESS_KEEP_RECENT:]
+
+        # 跳过 to_keep 开头的孤立 tool 消息（对应的 tool_use 已在压缩部分）
+        while to_keep and to_keep[0].get("role") == "tool":
+            to_keep.pop(0)
+        summary = self._summarize_messages(to_compress)
+
+        compressed = list(system_msgs)
+        if summary:
+            compressed.append({"role": "user", "content": f"[以下是之前对话的摘要]\n{summary}"})
+            compressed.append({"role": "assistant", "content": "好的，我已了解之前的分析内容，继续进行。"})
+        compressed.extend(to_keep)
+
+        new_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in compressed)
+        print(f"  [上下文压缩] 完成：{total_chars} → {new_chars} 字符")
+        return compressed
 
     def call(self, messages, response_format=None):
         """同步调用，返回完整文本内容。"""
@@ -129,37 +159,6 @@ class LLMAdaptor:
                 extra_body["thinking"] = {"type": "enabled" if thinking else "disabled"}
             if reasoning_effort:
                 extra_body["output_config"] = {"effort": reasoning_effort}
-
-    def _compress_if_needed(self, messages) -> list:
-        total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
-        if total_chars <= MAX_CONTEXT_CHARS:
-            return messages
-
-        print(f"\n  [上下文压缩] {total_chars} 字符超过阈值 {MAX_CONTEXT_CHARS}，开始压缩...")
-
-        system_msgs = [m for m in messages if m.get("role") == "system"]
-        other_msgs = [m for m in messages if m.get("role") != "system"]
-
-        if len(other_msgs) <= COMPRESS_KEEP_RECENT:
-            return messages
-
-        to_compress = other_msgs[:-COMPRESS_KEEP_RECENT]
-        to_keep = other_msgs[-COMPRESS_KEEP_RECENT:]
-
-        # 跳过 to_keep 开头的孤立 tool 消息（对应的 tool_use 已在压缩部分）
-        while to_keep and to_keep[0].get("role") == "tool":
-            to_keep.pop(0)
-        summary = self._summarize_messages(to_compress)
-
-        compressed = list(system_msgs)
-        if summary:
-            compressed.append({"role": "user", "content": f"[以下是之前对话的摘要]\n{summary}"})
-            compressed.append({"role": "assistant", "content": "好的，我已了解之前的分析内容，继续进行。"})
-        compressed.extend(to_keep)
-
-        new_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in compressed)
-        print(f"  [上下文压缩] 完成：{total_chars} → {new_chars} 字符")
-        return compressed
 
     def _summarize_messages(self, messages: list) -> str:
         from prompt.langfuse_prompt import get_compiled_messages
