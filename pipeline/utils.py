@@ -1,35 +1,9 @@
 """Pipeline 共用工具函数."""
-from pathlib import Path
+import re
+import unicodedata
 
-from base.types import EventType, Event
-
-
-def build_file_tree(files) -> str:
-    """构建文本形式的文件树。"""
-    tree = {}
-    for f in files:
-        parts = Path(f.path).parts
-        node = tree
-        for part in parts[:-1]:
-            node = node.setdefault(part + "/", {})
-        node[parts[-1]] = None
-
-    lines = ["project/"]
-    _render_tree(tree, lines, "")
-    return "".join(lines)
-
-
-def _render_tree(node: dict, lines: list, prefix: str) -> None:
-    items = sorted(node.items(), key=lambda x: (not isinstance(x[1], dict), x[0]))
-    for i, (name, value) in enumerate(items):
-        is_last = i == len(items) - 1
-        connector = "└── " if is_last else "├── "
-        if isinstance(value, dict):
-            lines.append(f"{prefix}{connector}{name}")
-            child_prefix = prefix + ("    " if is_last else "│   ")
-            _render_tree(value, lines, child_prefix)
-        else:
-            lines.append(f"{prefix}{connector}{name}")
+from base.types import EventType
+from pipeline.types import Topic
 
 
 def collect_report(events) -> str:
@@ -60,3 +34,153 @@ def collect_stream_text(events) -> str:
     """从 adaptor 流式事件中收集完整文本内容。"""
     parts = [e.content for e in events if e.type == EventType.CONTENT_DELTA and e.content]
     return "".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# TOC 解析
+# ---------------------------------------------------------------------------
+
+def parse_toc_xml(xml_text: str) -> list[Topic]:
+    """解析 XML TOC 输出，提取为 Topic 列表。"""
+    topics = []
+    index = 0
+
+    # 匹配 <section>...</section> 块
+    section_pattern = re.compile(r'<section>\s*(.*?)\s*</section>', re.DOTALL)
+    # 匹配 <group>名称<topic ...>主题</topic>...</group>
+    group_pattern = re.compile(r'<group>\s*(.*?)\s*((?:<topic[^>]*>.*?</topic>\s*)+)\s*</group>', re.DOTALL)
+    # 匹配独立 <topic level="...">主题名</topic>
+    topic_pattern = re.compile(r'<topic\s+level="([^"]*)">\s*(.*?)\s*</topic>', re.DOTALL)
+
+    for section_match in section_pattern.finditer(xml_text):
+        section_body = section_match.group(1)
+        # 提取章节名（section 标签后的第一行非标签文本）
+        section_name = _extract_section_name(section_body)
+
+        # 先处理 group 块
+        group_replaced = section_body
+        for group_match in group_pattern.finditer(section_body):
+            group_name = group_match.group(1).strip()
+            group_body = group_match.group(2)
+            for topic_match in topic_pattern.finditer(group_body):
+                index += 1
+                topics.append(Topic(
+                    name=topic_match.group(2).strip(),
+                    slug=slugify(topic_match.group(2).strip(), index),
+                    level=topic_match.group(1).strip(),
+                    section_name=section_name,
+                    group_name=group_name,
+                ))
+            group_replaced = group_replaced.replace(group_match.group(0), "")
+
+        # 再处理剩余的独立 topic
+        for topic_match in topic_pattern.finditer(group_replaced):
+            index += 1
+            topics.append(Topic(
+                name=topic_match.group(2).strip(),
+                slug=slugify(topic_match.group(2).strip(), index),
+                level=topic_match.group(1).strip(),
+                section_name=section_name,
+            ))
+
+    return topics
+
+
+def _extract_section_name(body: str) -> str:
+    """从 section body 中提取章节名称（第一个非标签文本行）。"""
+    lines = body.strip().split('\n')
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('<'):
+            return stripped
+    return "未命名章节"
+
+
+def slugify(name: str, index: int) -> str:
+    """将中英文标题转为 URL slug。格式：{index}-{slug}"""
+    # 移除常见标点
+    name = re.sub(r'[^\w\s-]', '', name)
+    name = re.sub(r'[\s_]+', '-', name)
+    # 对非 ASCII 字符做简化处理
+    slug_parts = []
+    for ch in name:
+        if ch.isascii() and (ch.isalnum() or ch == '-'):
+            slug_parts.append(ch.lower())
+        elif not ch.isascii():
+            # 非拉丁字符用音译简化
+            normalized = unicodedata.normalize('NFKD', ch)
+            ascii_chars = [c for c in normalized if c.isascii() and c.isalnum()]
+            if ascii_chars:
+                slug_parts.extend(ascii_chars)
+            # 如果没有 ascii 等价物，跳过
+    slug = ''.join(slug_parts).strip('-')
+    slug = re.sub(r'-+', '-', slug)  # 合并连续的 -
+    return f"{index}-{slug}" if slug else str(index)
+
+
+# ---------------------------------------------------------------------------
+# 导航上下文
+# ---------------------------------------------------------------------------
+
+def build_toc_navigation(topics: list[Topic], current: Topic) -> str:
+    """构建 step2 的导航上下文，标记 [你当前在此处]。"""
+    # 按 section 分组
+    sections = {}
+    for t in topics:
+        sections.setdefault(t.section_name, []).append(t)
+
+    lines = []
+    for sec_name, sec_topics in sections.items():
+        lines.append(f"- **{sec_name}**")
+        current_group = None
+        for t in sec_topics:
+            # 处理分组
+            if t.group_name != current_group:
+                current_group = t.group_name
+                if current_group:
+                    lines.append(f"  - *{current_group}*")
+
+            marker = " [你当前在此处]" if t.slug == current.slug else ""
+            indent = "    " if current_group else "  "
+            lines.append(f"{indent}- [{t.name}]({t.slug}){marker}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 内容提取
+# ---------------------------------------------------------------------------
+
+def extract_blog_content(text: str) -> str:
+    """从 LLM 输出中提取 <blog>...</blog> 内容。"""
+    match = re.search(r'<blog>(.*?)</blog>', text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    # 如果没有 blog 标签，返回原文
+    return text.strip()
+
+
+# ---------------------------------------------------------------------------
+# 报告拼接
+# ---------------------------------------------------------------------------
+
+def assemble_final_report(topics: list[Topic]) -> str:
+    """拼接所有 topic 内容为最终报告（无需 LLM 调用）。"""
+    sections = {}
+    for t in topics:
+        sections.setdefault(t.section_name, []).append(t)
+
+    parts = []
+    for sec_name, sec_topics in sections.items():
+        parts.append(f"# {sec_name}\n")
+        current_group = None
+        for t in sec_topics:
+            if t.group_name != current_group:
+                current_group = t.group_name
+                if current_group:
+                    parts.append(f"## {current_group}\n")
+            if t.content:
+                parts.append(t.content)
+                parts.append("")  # 空行分隔
+
+    return "\n".join(parts)

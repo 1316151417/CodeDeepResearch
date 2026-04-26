@@ -35,6 +35,8 @@ _DEFAULTS = {
     "research_parallel": True,
     "research_threads": 10,
     "debug": False,
+    "doc_language": "中文",
+    "target_audience": "初级开发者",
 }
 
 _settings = None

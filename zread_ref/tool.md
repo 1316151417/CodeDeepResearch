@@ -1,0 +1,3 @@
+1. get_dir_structure — 获取本地目录结构的工具。以树形文本展示目录内容，支持指定子目录和最大递归深度。自动过滤 .gitignore 中的条目和常见依赖目录（node_modules、vendor 等）。dir_path 使用相对于工作目录的路径，"." 表示根目录。
+2. view_file_in_detail — 查看本地文件内容的工具。支持指定起始/结束行号（默认读取前 200 行）和是否显示行号。file_path 使用相对于工作目录的路径。
+3. run_bash — 在本地仓库目录中执行只读 shell 命令。仅允许信息查询类命令，例如：ls, find, cat, grep, head, tail, wc, git log, git show 等。禁止使用写入、删除、修改文件或执行程序的命令（rm, mv, cp, chmod, chown, kill, sudo, curl, wget, >, >> 等）。命令在工作目录下执行，超时时间为 30 秒。

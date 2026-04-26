@@ -1,61 +1,40 @@
-"""Stage 1: Explore & Decompose - explore project and output chapter structure."""
+"""Step 1: 章节拆分 — 生成文档目录（TOC）."""
 import json
 import os
+import platform
 
 from provider.adaptor import LLMAdaptor
-from pipeline.types import PipelineContext, Chapter, Section, FileInfo
+from pipeline.types import PipelineContext
+from pipeline.utils import parse_toc_xml
 from prompt.langfuse_prompt import get_compiled_messages
-from pipeline.utils import build_file_tree
-from tool.fs_tool import (
-    set_project_root, read_file, list_directory,
-    glob_pattern, grep_content, scan_directory,
-)
+from tool.fs_tool import set_project_root, get_dir_structure, view_file_in_detail, run_bash
 
 
-def explore_and_decompose(ctx: PipelineContext) -> PipelineContext:
-    """Explore project filesystem and decompose into chapters."""
+def generate_toc(ctx: PipelineContext) -> PipelineContext:
+    """探索项目并生成文档目录结构。"""
     set_project_root(ctx.project_path)
-    tools = [scan_directory, read_file, list_directory, glob_pattern, grep_content]
+    tools = [get_dir_structure, view_file_in_detail, run_bash]
 
-    messages = get_compiled_messages("explorer",
-        project_name=ctx.project_name,
+    # 预生成顶层目录结构
+    ctx.repo_structure = get_dir_structure(".", 2)
+    os_name = platform.system().lower()
+
+    messages = get_compiled_messages("step1",
+        working_dir=ctx.project_path,
+        os_name=os_name,
+        repo_structure=ctx.repo_structure,
+        doc_language=ctx.settings.get("doc_language", "中文"),
     )
 
     adaptor = LLMAdaptor(ctx.pro_config)
-    result = json.loads(adaptor.react_for_json(messages=messages, tools=tools, max_steps=ctx.max_sub_agent_steps))
-    chapters_data = result.get("chapters", [])
+    raw_output = adaptor.react_for_text(messages=messages, tools=tools, max_steps=ctx.max_sub_agent_steps)
 
-    if not chapters_data:
-        raise ValueError("Explore & Decompose failed: agent returned no chapters")
+    # 保存原始 XML
+    ctx.toc_xml = raw_output
 
-    all_file_paths = set()
-    ctx.chapters = []
-
-    for ch in chapters_data:
-        sections = []
-        for sec in ch.get("sections", []):
-            name = sec.get("name", "")
-            description = sec.get("description", "")
-            files = sec.get("files", [])
-            valid_files = [
-                f for f in files
-                if os.path.isfile(os.path.join(ctx.project_path, f))
-            ]
-            if name and valid_files:
-                sections.append(Section(name=name, description=description, files=valid_files))
-                all_file_paths.update(valid_files)
-        if ch.get("name") and sections:
-            ctx.chapters.append(Chapter(
-                name=ch["name"],
-                description=ch.get("description", ""),
-                sections=sections,
-            ))
-
-    # Populate all_files for downstream build_file_tree() usage
-    ctx.all_files = [FileInfo(path=p) for p in sorted(all_file_paths)]
-    ctx.file_tree = build_file_tree(ctx.all_files)
-
-    if not ctx.chapters:
-        raise ValueError("Explore & Decompose failed: no valid chapters produced")
+    # 解析 TOC
+    ctx.topics = parse_toc_xml(raw_output)
+    if not ctx.topics:
+        raise ValueError("章节拆分失败：未能解析出任何主题")
 
     return ctx

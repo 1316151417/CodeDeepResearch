@@ -5,9 +5,8 @@ dotenv.load_dotenv()
 
 from langfuse import get_client
 from prompt.pipeline_prompts import (
-    EXPLORER_SYSTEM, EXPLORER_USER,
-    SUB_AGENT_SYSTEM, SUB_AGENT_USER,
-    AGGREGATOR_SYSTEM, AGGREGATOR_USER,
+    STEP1_SYSTEM, STEP1_USER,
+    STEP2_SYSTEM, STEP2_USER,
 )
 from prompt.react_prompts import COMPRESS_SYSTEM, COMPRESS_USER
 
@@ -21,9 +20,8 @@ langfuse = get_client()
 
 # 每个 pipeline 阶段的 system + user 配对为 chat prompt
 chat_prompts = [
-    ("explorer", EXPLORER_SYSTEM, EXPLORER_USER),
-    ("sub-agent", SUB_AGENT_SYSTEM, SUB_AGENT_USER),
-    ("aggregator", AGGREGATOR_SYSTEM, AGGREGATOR_USER),
+    ("step1", STEP1_SYSTEM, STEP1_USER),
+    ("step2", STEP2_SYSTEM, STEP2_USER),
     ("compress", COMPRESS_SYSTEM, COMPRESS_USER),
 ]
 
