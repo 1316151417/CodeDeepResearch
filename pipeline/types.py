@@ -39,6 +39,10 @@ class PipelineContext:
     research_threads: int = 4
     settings: dict = field(default_factory=dict)
 
+    # 公共资源
+    report_dir: str = ""
+    file_tree: str = ""
+
     # Stage 1: explorer output
     all_files: list[FileInfo] = field(default_factory=list)
     chapters: list[Chapter] = field(default_factory=list)

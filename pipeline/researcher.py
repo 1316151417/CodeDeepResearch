@@ -1,39 +1,53 @@
-"""Stage 5: 子模块深度研究 - ReAct agent 研究模块并生成报告."""
+"""Stage 2: 节深度研究 - 研究模块并生成报告."""
 import json
-import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from agent.react_agent import stream as react_stream
-from pipeline.types import PipelineContext, Module
+from provider.adaptor import LLMAdaptor
+from pipeline.types import PipelineContext
 from prompt.langfuse_prompt import get_compiled_messages
-from pipeline.utils import build_file_tree, collect_report
 from tool.fs_tool import set_project_root, read_file, list_directory, glob_pattern, grep_content
 
 
-def prepare_research(ctx: PipelineContext) -> tuple:
-    """初始化研究工具和文件树，供 research_one_module 使用。"""
+def research_sections(ctx: PipelineContext) -> PipelineContext:
+    """研究所有节，并行或串行。"""
     set_project_root(ctx.project_path)
+    adaptor = LLMAdaptor(ctx.pro_config)
     tools = [read_file, list_directory, glob_pattern, grep_content]
-    file_tree = build_file_tree(ctx.all_files)
-    return tools, file_tree
+
+    all_sections = [sec for ch in ctx.chapters for sec in ch.sections]
+
+    if ctx.research_parallel:
+        print(f"  并行模式: {ctx.research_threads} 线程, {len(all_sections)} 个节")
+        with ThreadPoolExecutor(max_workers=ctx.research_threads) as executor:
+            futures = {
+                executor.submit(_research_one, ctx, sec, adaptor, tools): sec
+                for sec in all_sections
+            }
+            for future in as_completed(futures):
+                sec = futures[future]
+                try:
+                    future.result()
+                    print(f"  ✓ 节完成: {sec.name}")
+                except Exception as e:
+                    print(f"  ✗ 节失败: {sec.name} - {e}")
+    else:
+        print(f"  串行模式: {len(all_sections)} 个节")
+        for sec in all_sections:
+            _research_one(ctx, sec, adaptor, tools)
+            print(f"  ✓ 节完成: {sec.name}")
+
+    return ctx
 
 
-def research_one_module(ctx: PipelineContext, module: Module, tools: list, report_dir: str, file_tree: str) -> None:
-    """研究单个模块并生成报告。"""
-    set_project_root(ctx.project_path)
-
-    module_files_json = json.dumps(module.files, ensure_ascii=False, indent=2)
+def _research_one(ctx: PipelineContext, section, adaptor: LLMAdaptor, tools: list) -> None:
+    """内部函数：研究单个 section，结果写入 section.research_report。"""
+    module_files_json = json.dumps(section.files, ensure_ascii=False, indent=2)
 
     messages = get_compiled_messages("sub-agent",
         project_name=ctx.project_name,
-        module_name=module.name,
-        file_tree=file_tree,
+        module_name=section.name,
+        file_tree=ctx.file_tree,
         module_files_json=module_files_json,
     )
 
-    events = react_stream(messages=messages, tools=tools, config=ctx.pro_config, max_steps=ctx.max_sub_agent_steps)
-
-    module.research_report = collect_report(events)
-
-    path = os.path.join(report_dir, f"模块分析报告-{module.name}.md")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(module.research_report)
+    section.research_report = adaptor.react_for_text(messages=messages, tools=tools, max_steps=ctx.max_sub_agent_steps)

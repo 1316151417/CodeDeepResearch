@@ -23,26 +23,20 @@ class LLMAdaptor:
         params = self._build_params(tools, response_format)
         yield from self._api.stream_events(messages, self._config, params, **kwargs)
 
-    def stream_for_text(self, messages, tools=None, response_format=None, **kwargs):
-        """流式调用，收集完整文本内容返回。"""
-        from pipeline.utils import collect_stream_text
-        return collect_stream_text(self.stream(messages, tools, response_format, **kwargs))
+    def stream_react(self, messages, tools, max_steps=30):
+        """ReAct 循环：LLM 调工具 → 执行 → 回传 → 继续，yield 事件。"""
+        from agent.react_agent import stream as react_stream
+        yield from react_stream(messages, tools, self._config, max_steps)
 
-    def stream_for_json(self, messages, tools=None, response_format=None, **kwargs):
-        """流式调用，收集内容并提取 JSON 返回。"""
+    def react_for_text(self, messages, tools, max_steps=30):
+        """ReAct 循环，收集最终文本内容返回。"""
+        from pipeline.utils import collect_report
+        return collect_report(self.stream_react(messages, tools, max_steps))
+
+    def react_for_json(self, messages, tools, max_steps=30):
+        """ReAct 循环，收集内容并提取 JSON 返回。"""
         from pipeline.utils import extract_json
-        return extract_json(self.stream_for_text(messages, tools, response_format, **kwargs))
-
-    def call(self, messages, response_format=None):
-        """同步调用，返回完整文本内容。"""
-        messages = normalize_messages(messages)
-        params = self._build_params(None, response_format)
-        return self._api.call(messages, self._config, params)
-
-    def call_for_json(self, messages, response_format=None):
-        """同步调用，返回提取后的 JSON 文本。"""
-        from pipeline.utils import extract_json
-        return extract_json(self.call(messages, response_format=response_format))
+        return extract_json(self.react_for_text(messages, tools, max_steps))
 
     def _build_params(self, tools, response_format):
         params = {}
