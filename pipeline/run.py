@@ -1,17 +1,16 @@
 """Pipeline 主入口：2 阶段编排."""
+import json
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from langfuse import observe, propagate_attributes
 
 from settings import load_settings, get_config
 from pipeline.types import PipelineContext
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 from pipeline.explorer import generate_toc
 from pipeline.researcher import generate_topic_content
-from pipeline.utils import assemble_final_report
 
 
 def _observed(name, fn, *args, session_id, **kwargs):
@@ -20,15 +19,43 @@ def _observed(name, fn, *args, session_id, **kwargs):
         return observe(name=name)(fn)(*args, **kwargs)
 
 
-def run_pipeline(
-    project_path: str,
-    settings_path: str | None = None,
-) -> str:
-    """运行完整分析流水线。"""
+def _build_wiki(topics) -> dict:
+    """构建 wiki.json 结构化数据。"""
+    sections = {}
+    for t in topics:
+        sections.setdefault(t.section_name, []).append(t)
+
+    result = []
+    for sec_name, sec_topics in sections.items():
+        groups = {}
+        section_entry = {"section": sec_name, "groups": []}
+
+        for t in sec_topics:
+            entry = {
+                "name": t.name,
+                "slug": t.slug,
+                "level": t.level,
+                "file": f"{t.slug}.md",
+            }
+            if t.group_name:
+                groups.setdefault(t.group_name, []).append(entry)
+            else:
+                section_entry["groups"].append({"topics": [entry]})
+
+        for group_name, group_topics in groups.items():
+            section_entry["groups"].append({"name": group_name, "topics": group_topics})
+
+        result.append(section_entry)
+
+    return {"sections": result}
+
+
+def run_pipeline(settings_path: str | None = None) -> None:
+    """运行完整分析流水线，输出到当前目录的 .zread/ 下。"""
     session_id = f"pipeline-{uuid.uuid4().hex[:8]}"
 
     settings = load_settings(settings_path)
-    project_path = os.path.abspath(project_path)
+    project_path = os.getcwd()
     project_name = os.path.basename(project_path)
 
     lite_config = get_config("lite")
@@ -40,15 +67,22 @@ def run_pipeline(
 
     print(f"模型配置: lite={lite_config['model']}, pro={pro_config['model']}, max={max_config['model']}")
 
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    report_dir = os.path.join(os.getcwd(), ".report", project_name, timestamp)
-    os.makedirs(report_dir, exist_ok=True)
-    print(f"报告输出目录: {report_dir}")
+    # .zread 目录结构
+    zread_dir = os.path.join(project_path, ".zread")
+    versions_dir = os.path.join(zread_dir, "versions")
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    version_dir = os.path.join(versions_dir, timestamp)
+    os.makedirs(version_dir, exist_ok=True)
+    print(f"报告输出目录: {version_dir}")
+
+    # 更新 current 指针
+    current_path = os.path.join(zread_dir, "current")
+    with open(current_path, "w", encoding="utf-8") as f:
+        f.write(f"versions/{timestamp}")
 
     ctx = PipelineContext(
         project_path=project_path,
         project_name=project_name,
-        report_dir=report_dir,
         lite_config=lite_config,
         pro_config=pro_config,
         max_config=max_config,
@@ -67,7 +101,7 @@ def run_pipeline(
         print(f"    [{topic.section_name}] {topic.name} [{topic.level}]{group}")
 
     # 保存 TOC
-    toc_path = os.path.join(report_dir, "toc.xml")
+    toc_path = os.path.join(version_dir, "toc.xml")
     with open(toc_path, "w", encoding="utf-8") as f:
         f.write(ctx.toc_xml)
 
@@ -82,7 +116,7 @@ def run_pipeline(
                 generate_topic_content, ctx, topic,
                 session_id=session_id,
             )
-            path = os.path.join(report_dir, f"{topic.slug}.md")
+            path = os.path.join(version_dir, f"{topic.slug}.md")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(topic.content)
             print(f"  ✓ 主题完成: {topic.name}")
@@ -100,14 +134,13 @@ def run_pipeline(
         for topic in ctx.topics:
             _process_topic(topic)
 
-    # 拼接最终报告
-    ctx.final_report = assemble_final_report(ctx.topics)
-    final_path = os.path.join(report_dir, f"full-report-{ctx.project_name}.md")
-    with open(final_path, "w", encoding="utf-8") as f:
-        f.write(ctx.final_report)
+    # 保存 wiki.json
+    wiki = _build_wiki(ctx.topics)
+    wiki_path = os.path.join(version_dir, "wiki.json")
+    with open(wiki_path, "w", encoding="utf-8") as f:
+        json.dump(wiki, f, ensure_ascii=False, indent=2)
 
     print(f"\n{'='*60}")
-    print(f"分析完成！共 {len(ctx.topics)} 个主题报告 + 1 份完整报告")
-    print(f"报告目录: {report_dir}")
+    print(f"分析完成！共 {len(ctx.topics)} 个主题报告")
+    print(f"报告目录: {version_dir}")
     print(f"{'='*60}")
-    return ctx.final_report

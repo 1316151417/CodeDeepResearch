@@ -29,5 +29,3 @@ class PipelineContext:
     repo_structure: str = ""   # 顶层目录结构（预生成，两步共用）
     toc_xml: str = ""          # 原始 XML TOC
     topics: list[Topic] = field(default_factory=list)
-    # Step 2 输出
-    final_report: str = ""

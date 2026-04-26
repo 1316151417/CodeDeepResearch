@@ -158,29 +158,3 @@ def extract_blog_content(text: str) -> str:
         return match.group(1).strip()
     # 如果没有 blog 标签，返回原文
     return text.strip()
-
-
-# ---------------------------------------------------------------------------
-# 报告拼接
-# ---------------------------------------------------------------------------
-
-def assemble_final_report(topics: list[Topic]) -> str:
-    """拼接所有 topic 内容为最终报告（无需 LLM 调用）。"""
-    sections = {}
-    for t in topics:
-        sections.setdefault(t.section_name, []).append(t)
-
-    parts = []
-    for sec_name, sec_topics in sections.items():
-        parts.append(f"# {sec_name}\n")
-        current_group = None
-        for t in sec_topics:
-            if t.group_name != current_group:
-                current_group = t.group_name
-                if current_group:
-                    parts.append(f"## {current_group}\n")
-            if t.content:
-                parts.append(t.content)
-                parts.append("")  # 空行分隔
-
-    return "\n".join(parts)
