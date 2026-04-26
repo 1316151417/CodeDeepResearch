@@ -5,7 +5,7 @@ import os
 from agent.react_agent import stream as react_stream
 from pipeline.types import PipelineContext, Chapter, Section, FileInfo
 from prompt.langfuse_prompt import get_compiled_messages
-from pipeline.utils import collect_report
+from pipeline.utils import collect_report, extract_json
 from tool.fs_tool import (
     set_project_root, read_file, list_directory,
     glob_pattern, grep_content, scan_directory,
@@ -28,7 +28,7 @@ def explore_and_decompose(ctx: PipelineContext) -> None:
     )
 
     raw_output = collect_report(events)
-    result = json.loads(_extract_json(raw_output))
+    result = json.loads(extract_json(raw_output))
     chapters_data = result.get("chapters", [])
 
     if not chapters_data:
@@ -62,21 +62,3 @@ def explore_and_decompose(ctx: PipelineContext) -> None:
 
     if not ctx.chapters:
         raise ValueError("Explore & Decompose failed: no valid chapters produced")
-
-
-def _extract_json(text: str) -> str:
-    """Extract JSON from possibly markdown-wrapped text."""
-    text = text.strip()
-    if "```" in text:
-        start = text.find("```")
-        end = text.rfind("```")
-        if start != end:
-            inner = text[start:end]
-            first_newline = inner.find("\n")
-            if first_newline != -1:
-                inner = inner[first_newline + 1:]
-            return inner.strip()
-    for i, ch in enumerate(text):
-        if ch in "[{":
-            return text[i:]
-    return text

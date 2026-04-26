@@ -1,8 +1,11 @@
 """
-OpenAI-compatible API client - configurable via settings.
+OpenAI-compatible API client - high-level streaming and sync call interface.
 """
+import json
 import os
 import time
+
+from base.types import Event, EventType
 
 DEFAULT_TIMEOUT = 60
 MAX_RETRIES = 1
@@ -30,26 +33,131 @@ def _with_retry(fn, retry_label, *args, **kwargs):
                 raise
 
 
-def call_openai(messages, base_url=None, api_key=None, model=None, max_tokens=None, response_format=None, **kwargs):
-    """OpenAI-compatible synchronous call with configurable endpoint."""
-    client = _create_client(api_key=api_key, base_url=base_url)
-    response = _with_retry(
-        lambda: client.chat.completions.create(
-            model=model, messages=messages, max_tokens=max_tokens,
-            timeout=DEFAULT_TIMEOUT, response_format=response_format, **kwargs
-        ),
-        "LLM 调用",
-    )
-    return response.choices[0].message
+def convert_messages(messages):
+    """将统一消息格式转换为 OpenAI 格式。"""
+    converted = []
+    for msg in messages:
+        if msg.get("role") == "tool":
+            converted.append({
+                "role": "tool",
+                "tool_call_id": msg["tool_id"],
+                "content": str(msg.get("tool_result") or msg.get("tool_error") or ""),
+            })
+        elif msg.get("role") == "assistant" and msg.get("tool_calls"):
+            assistant_msg = {"role": "assistant"}
+            if msg.get("reasoning_content"):
+                assistant_msg["reasoning_content"] = msg["reasoning_content"]
+            if msg.get("content"):
+                assistant_msg["content"] = msg["content"]
+            assistant_msg["tool_calls"] = [
+                {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc.get("arguments", "{}")}}
+                for tc in msg["tool_calls"]
+            ]
+            converted.append(assistant_msg)
+        else:
+            converted.append(msg)
+    return converted
 
 
-def call_stream_openai(messages, base_url=None, api_key=None, model=None, max_tokens=None, response_format=None, **kwargs):
-    """OpenAI-compatible streaming call with configurable endpoint."""
-    client = _create_client(api_key=api_key, base_url=base_url)
-    return _with_retry(
+def inject_params(params, config):
+    """注入 OpenAI 特有的思考模式参数。"""
+    thinking = config.get("thinking")
+    reasoning_effort = config.get("reasoning_effort")
+    if reasoning_effort:
+        params["reasoning_effort"] = reasoning_effort
+    if thinking is not None:
+        params.setdefault("extra_body", {})["thinking"] = {"type": "enabled" if thinking else "disabled"}
+
+
+def stream_events(messages, config, params, **kwargs):
+    """高层流式调用：转换消息 → 创建 client → 流式请求 → yield Event。"""
+    inject_params(params, config)
+    converted = convert_messages(messages)
+
+    client = _create_client(api_key=config.get("api_key"), base_url=config.get("base_url"))
+    stream = _with_retry(
         lambda: client.chat.completions.create(
-            model=model, messages=messages, max_tokens=max_tokens,
-            stream=True, timeout=DEFAULT_TIMEOUT, response_format=response_format, **kwargs
+            model=config.get("model"),
+            messages=converted,
+            max_tokens=config.get("max_tokens"),
+            stream=True,
+            timeout=DEFAULT_TIMEOUT,
+            **params,
+            **kwargs,
         ),
         "LLM 流式调用",
     )
+
+    tools = {}
+    in_thinking = False
+    in_content = False
+
+    for chunk in stream:
+        choice = chunk.choices[0]
+        delta = choice.delta
+
+        if delta.role == "assistant":
+            yield Event(EventType.MESSAGE_START)
+
+        # Thinking
+        if getattr(delta, 'reasoning_content', None):
+            if not in_thinking:
+                in_thinking = True
+                yield Event(EventType.THINKING_START)
+            yield Event(EventType.THINKING_DELTA, content=delta.reasoning_content)
+        else:
+            if in_thinking:
+                in_thinking = False
+                yield Event(EventType.THINKING_END)
+
+        # Content
+        if delta.content:
+            if not in_content:
+                in_content = True
+                yield Event(EventType.CONTENT_START)
+            yield Event(EventType.CONTENT_DELTA, content=delta.content)
+        else:
+            if in_content:
+                in_content = False
+                yield Event(EventType.CONTENT_END)
+
+        # Tool calls
+        if delta.tool_calls:
+            for tc in delta.tool_calls:
+                idx = tc.index + 1
+                if idx not in tools:
+                    tools[idx] = {"id": tc.id, "name": tc.function.name or "", "arguments": tc.function.arguments or ""}
+                elif tc.function.arguments:
+                    tools[idx]["arguments"] += tc.function.arguments
+
+        # End
+        if choice.finish_reason is not None:
+            if in_thinking:
+                yield Event(EventType.THINKING_END)
+            if in_content:
+                yield Event(EventType.CONTENT_END)
+            for idx in sorted(tools.keys()):
+                tool = tools[idx]
+                yield Event(EventType.TOOL_CALL, tool_id=tool["id"], tool_name=tool["name"], tool_arguments=tool["arguments"], raw={"id": tool["id"], "name": tool["name"], "arguments": tool["arguments"]})
+            yield Event(EventType.MESSAGE_END, stop_reason=choice.finish_reason, usage=chunk.usage)
+            return
+
+
+def call(messages, config, params, **kwargs):
+    """高层同步调用：转换消息 → 创建 client → 返回文本内容。"""
+    inject_params(params, config)
+    converted = convert_messages(messages)
+
+    client = _create_client(api_key=config.get("api_key"), base_url=config.get("base_url"))
+    response = _with_retry(
+        lambda: client.chat.completions.create(
+            model=config.get("model"),
+            messages=converted,
+            max_tokens=config.get("max_tokens"),
+            timeout=DEFAULT_TIMEOUT,
+            **params,
+            **kwargs,
+        ),
+        "LLM 调用",
+    )
+    return response.choices[0].message.content

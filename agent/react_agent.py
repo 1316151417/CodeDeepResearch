@@ -7,12 +7,109 @@ from dataclasses import dataclass, field
 
 from log.logger import logger
 from provider.adaptor import LLMAdaptor
-from base.types import Event, EventType, ToolMessage, AssistantMessage
+from base.types import Event, EventType, ToolMessage, AssistantMessage, normalize_messages
 
 from langfuse import observe
 
 MAX_STEP_CNT = 30
+MAX_CONTEXT_CHARS = 200_000
+COMPRESS_KEEP_RECENT = 6
 
+
+# --- Context compression ---
+
+def compress_if_needed(adaptor, messages) -> list:
+    """检查上下文长度，超阈值则压缩旧消息。"""
+    messages = normalize_messages(messages)
+    total_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in messages)
+    if total_chars <= MAX_CONTEXT_CHARS:
+        return messages
+
+    print(f"\n  [上下文压缩] {total_chars} 字符超过阈值 {MAX_CONTEXT_CHARS}，开始压缩...")
+
+    system_msgs = [m for m in messages if m.get("role") == "system"]
+    other_msgs = [m for m in messages if m.get("role") != "system"]
+
+    if len(other_msgs) <= COMPRESS_KEEP_RECENT:
+        return messages
+
+    to_compress = other_msgs[:-COMPRESS_KEEP_RECENT]
+    to_keep = other_msgs[-COMPRESS_KEEP_RECENT:]
+
+    # 跳过 to_keep 开头的孤立 tool 消息（对应的 tool_use 已在压缩部分）
+    while to_keep and to_keep[0].get("role") == "tool":
+        to_keep.pop(0)
+    summary = _summarize_messages(adaptor, to_compress)
+
+    compressed = list(system_msgs)
+    if summary:
+        compressed.append({"role": "user", "content": f"[以下是之前对话的摘要]\n{summary}"})
+        compressed.append({"role": "assistant", "content": "好的，我已了解之前的分析内容，继续进行。"})
+    compressed.extend(to_keep)
+
+    new_chars = sum(len(json.dumps(m, ensure_ascii=False)) for m in compressed)
+    print(f"  [上下文压缩] 完成：{total_chars} → {new_chars} 字符")
+    return compressed
+
+
+def _summarize_messages(adaptor, messages: list) -> str:
+    from prompt.langfuse_prompt import get_compiled_messages
+    conversation_text = _format_messages_for_summary(messages)
+    if not conversation_text.strip():
+        return ""
+
+    try:
+        compiled = get_compiled_messages("compress", conversation=conversation_text[:30000])
+        return adaptor.call(compiled)
+    except Exception as e:
+        print(f"  [上下文压缩] 压缩失败: {e}")
+        return ""
+
+
+def _format_messages_for_summary(messages: list) -> str:
+    lines = []
+    for m in messages:
+        role = m.get("role", "?")
+        content = m.get("content", "")
+
+        if role == "assistant":
+            lines.append(_format_assistant_for_summary(content))
+        elif role == "user":
+            lines.append(_format_user_for_summary(content))
+        elif role == "tool":
+            result = m.get("tool_result") or m.get("tool_error") or ""
+            lines.append(f"[工具结果({m.get('tool_name', '?')})]: {str(result)[:500]}")
+    return "\n".join(lines)
+
+
+def _format_assistant_for_summary(content) -> str:
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(f"[助手]: {block['text'][:500]}")
+                elif block.get("type") == "tool_use":
+                    parts.append(f"[助手调用工具]: {block.get('name', '?')}({json.dumps(block.get('input', {}), ensure_ascii=False)[:200]})")
+        return "\n".join(parts) if parts else ""
+    elif content:
+        return f"[助手]: {str(content)[:500]}"
+    return ""
+
+
+def _format_user_for_summary(content) -> str:
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result":
+                parts.append(f"[工具结果]: {str(block.get('content', ''))[:500]}")
+        return "\n".join(parts) if parts else ""
+    elif content:
+        return f"[用户]: {str(content)[:500]}"
+    return ""
+
+
+# --- Step accumulator ---
 
 @dataclass
 class _Step:
@@ -65,7 +162,7 @@ def stream(messages, tools, config: dict, max_steps=MAX_STEP_CNT):
     tool_map = {t.name: t for t in tools}
 
     for step in range(1, max_steps + 1):
-        compressed = adaptor.compress_if_needed(messages)
+        compressed = compress_if_needed(adaptor, messages)
         if compressed is not messages:
             messages.clear()
             messages.extend(compressed)

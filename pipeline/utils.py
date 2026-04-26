@@ -1,7 +1,7 @@
 """Pipeline 共用工具函数."""
 from pathlib import Path
 
-from base.types import EventType
+from base.types import EventType, Event
 
 
 def build_file_tree(files) -> str:
@@ -36,3 +36,27 @@ def collect_report(events) -> str:
     """从 ReAct agent 事件流中提取最终报告内容。"""
     contents = [e.content for e in events if e.type == EventType.STEP_END and e.content]
     return contents[-1] if contents else "（未能生成报告）"
+
+
+def extract_json(text: str) -> str:
+    """从 LLM 响应中提取 JSON（可能被 markdown 代码块包裹）。"""
+    text = text.strip()
+    if "```" in text:
+        start = text.find("```")
+        end = text.rfind("```")
+        if start != end:
+            inner = text[start:end]
+            first_newline = inner.find("\n")
+            if first_newline != -1:
+                inner = inner[first_newline + 1:]
+            return inner.strip()
+    for i, ch in enumerate(text):
+        if ch in "[{":
+            return text[i:]
+    return text
+
+
+def collect_stream_text(events) -> str:
+    """从 adaptor 流式事件中收集完整文本内容。"""
+    parts = [e.content for e in events if e.type == EventType.CONTENT_DELTA and e.content]
+    return "".join(parts)
