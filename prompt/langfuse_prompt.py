@@ -1,7 +1,4 @@
 """Langfuse prompt management - fetch and compile prompts."""
-import dotenv
-dotenv.load_dotenv()
-
 from langfuse import get_client, observe
 
 _client = get_client()
