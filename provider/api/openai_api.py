@@ -1,7 +1,6 @@
 """
 OpenAI-compatible API client - high-level streaming and sync call interface.
 """
-import json
 import os
 import time
 

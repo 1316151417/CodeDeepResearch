@@ -23,8 +23,8 @@ The pipeline reads `settings.json` from the current directory (or falls back to 
 ## Configuration
 
 - **`settings.json`** — Model tiers (`lite`, `pro`, `max`), parallelism settings, document language. `api_key` fields support `${ENV_VAR}` interpolation.
-- **`.env`** — API keys (`DEEPSEEK_API_KEY`), Langfuse credentials (`LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_BASE_URL`).
-- **Langfuse Prompt Management** — Prompts are synced to Langfuse via `prompt/langfuse_prompt_init.py`. At runtime, `prompt/langfuse_prompt.py` fetches compiled prompts from Langfuse, not from local Python strings.
+- **`.env`** — API keys (`DEEPSEEK_API_KEY`), Langfuse toggle (`LANGFUSE_ENABLE`, default `false`), Langfuse credentials (`LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_BASE_URL`).
+- **Langfuse Integration** — Controlled by `LANGFUSE_ENABLE`. When `true`: uses `langfuse.openai.OpenAI` for auto-tracing, fetches prompts from Langfuse Prompt Management via `prompt/langfuse_prompt.py`. When `false` (default): uses standard `openai.OpenAI`, compiles prompts locally from `prompt/pipeline_prompts.py` and `prompt/react_prompts.py`. The toggle and conditional imports are centralized in `util/langfuse.py`.
 
 ## Architecture
 
@@ -36,11 +36,12 @@ Two-phase pipeline orchestrated in `pipeline/run.py`:
 
 ### Key components
 
-- **`provider/`** — Dual-provider abstraction (`openai` and `anthropic` protocols). `provider/adaptor.py` (LLMAdaptor) routes to the correct API module based on `settings.json`. Both providers implement `stream_events()`, `call()`, and message conversion.
-- **`agent/react_agent.py`** — ReAct loop implementation. Streams events for each step, handles tool execution, and includes automatic context compression when conversation exceeds 200K chars.
+- **`provider/`** — Dual-provider abstraction (`openai` and `anthropic` protocols). `provider/adaptor.py` (LLMAdaptor) routes to the correct API module based on `settings.json`. Both providers implement `stream_events()`, `call()`, and message conversion. `provider/api/openai_api.py` uses `OpenAI` from `util/langfuse.py` (either `langfuse.openai.OpenAI` or standard `openai.OpenAI`).
+- **`util/langfuse.py`** — Central Langfuse toggle. Reads `LANGFUSE_ENABLE` at import time. Exports `observe`, `propagate_attributes`, `OpenAI`, and `LANGFUSE_ENABLED`. When disabled, all are no-ops or standard library equivalents.
+- **`agent/react_agent.py`** — ReAct loop implementation. Streams events for each step, handles tool execution, and includes automatic context compression when conversation exceeds 200K chars. Uses `observe` from `util/langfuse.py`.
 - **`base/types.py`** — Core types: `Event`, `EventType`, `Tool`, message classes (`SystemMessage`, `UserMessage`, `AssistantMessage`, `ToolMessage`), and the `@tool` decorator that introspects function signatures to build tool schemas.
 - **`tool/fs_tool.py`** — Filesystem tools available to agents: `get_dir_structure`, `view_file_in_detail`, `run_bash` (read-only, whitelist-enforced).
-- **`prompt/`** — Prompt definitions (`pipeline_prompts.py`, `react_prompts.py`) and Langfuse integration. Prompts use Python `{variable}` format strings locally, converted to Langfuse `{{variable}}` template syntax on sync.
+- **`prompt/`** — Prompt definitions (`pipeline_prompts.py`, `react_prompts.py`) and compilation (`langfuse_prompt.py`). When Langfuse enabled: fetches from Langfuse server. When disabled: compiles local templates with `str.format()`. Prompts use Python `{variable}` format strings locally, converted to Langfuse `{{variable}}` template syntax on sync via `langfuse_prompt_init.py`.
 - **`setting/settings.py`** — Loads and merges `settings.json` with defaults, expands env vars, auto-appends `/anthropic` to base URLs for the Anthropic provider.
 
 ### Data flow
